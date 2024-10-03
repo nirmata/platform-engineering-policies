@@ -7,13 +7,10 @@ This repository includes resources for testing a Kyverno policy designed to clea
 ## Usage:
 
 ### RBAC Configuration
-For the Kyverno policies to mutate and cleanup correctly, Kyverno requires permissions to mutate and cleanup pods across all namespaces. Deploy `cleanup-clusterrole.yaml` and create clusterrolebinding to kyverno-cleanup-controller serviceaccount in kyverno namespace with clusterrole which we have created for this purpose.
+For the Kyverno policies to mutate and cleanup correctly, Kyverno requires permissions to mutate and cleanup pods across all namespaces. Deploy the necessary rbac (`cleanup-clusterrole.yaml`,`cleanup-clusterrolebinding.yaml`,`mutatepod-clusterrole.yaml` and `mutatepod-clusterrolebinding.yaml`) before deploying the mutation and cleanup policies.
 
 ```
-kubectl apply -f cleanup-clusterrole.yaml
-```
-```
-kubectl create clusterrolebinding kyvernocleanup-rs --clusterrole=kyverno:cleanup-rs  --serviceaccount=kyverno:kyverno-cleanup-controller
+kubectl apply -f cleanup-clusterrole.yaml -f cleanup-clusterrolebinding.yaml -f mutatepod-clusterrole.yaml -f mutatepod-clusterrolebinding.yaml
 ```
 
 ### Deploying the Kyverno Policy
