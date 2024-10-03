@@ -1,0 +1,12 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kyverno-pod-deleter-binding
+subjects:
+- kind: ServiceAccount
+  name: kyverno-background-controller
+  namespace: kyverno # Ensure this matches the namespace where Kyverno is installed
+roleRef:
+  kind: ClusterRole
+  name: kyverno-pod-deleter
+  apiGroup: rbac.authorization.k8s.io
