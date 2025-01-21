@@ -1,5 +1,5 @@
 # Kyverno cleanup policy for Pods 
-This repository includes resources for testing a Kyverno policy designed to cleanup bare pods which don't have ownerreference. This works in a 2 step process. The `mark-bare-pods-cleanup` policy mutates all the pods that don't have ownerreference with an annotation `delete-resource`: `allow`. The `clean-bare-pods` is a cleanup policy that cleans up all the pods that have `delete-resource`: `allow` annotation. 
+This folder includes Kyverno policies designed to cleanup bare pods which don't have ownerreference. This works in a 2 step process. The `mark-bare-pods-cleanup` policy mutates all the pods that don't have ownerreference with an annotation `allow-delete`: `"true"`. The `clean-bare-pods` is a cleanup policy that cleans up all the pods that have `allow-delete`: `"true"` annotation. 
 
 ## Prerequisites:
 - A Kubernetes cluster with Kyverno 1.10 or above installed. 
@@ -19,7 +19,7 @@ The first step is to deploy the mutation policy. This will mark all the pods for
 ```
 kubectl apply -f mark-bare-pods-cleanup.yaml
 ```
-Review the pods that have the `delete-resource`: `allow` cleanup annotation. Deploy the cleanup policy that will cleanup all pods without ownerreference. 
+Review the pods that have the `allow-delete`: `"true"` cleanup annotation. Deploy the cleanup policy that will cleanup all pods without ownerreference. 
 
 ```
 kubectl apply -f cleanup-bare-pods.yaml

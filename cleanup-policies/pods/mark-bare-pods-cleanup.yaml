@@ -13,7 +13,7 @@ metadata:
     kyverno.io/kubernetes-version: "1.27"
     policies.kyverno.io/description: "A bare Pod is any Pod created directly and not owned by a controller such as a Deployment or Job. Bare Pods are often create manually by users in an attempt to troubleshoot an issue. If left in the cluster, they create clutter, increase cost, and can be a security risk. Bare Pods can be marked for cleanup and later cleaned up using cleanup policies. This policy finds all such pods and adds an appropriate annotation for later cleanup\"      "
 spec:
-  # mutateExistingOnPolicyUpdate: true
+  #mutateExistingOnPolicyUpdate: true
   rules:
   - name: mark-bare-pods-cleanup
     match:
@@ -37,5 +37,5 @@ spec:
       patchStrategicMerge:
         metadata:
           annotations:
-            delete-resource: "allow"
+            allow-delete: "true"
 
