@@ -1,0 +1,33 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: edit-replicasets-clusterrole
+  labels:
+    app.kubernetes.io/component: background-controller
+    app.kubernetes.io/instance: kyverno
+    app.kubernetes.io/managed-by: Helm
+    app.kubernetes.io/part-of: kyverno
+rules:
+  # Allow access to ReplicaSets
+  - apiGroups:
+      - apps
+    resources:
+      - replicasets
+      - replicasets/status
+    verbs:
+      - get
+      - list
+      - watch
+      - create
+      - delete
+      - update
+      - patch
+  # Allow discovery of API resources
+  - apiGroups:
+      - ""
+    resources:
+      - apiservices
+    verbs:
+      - get
+      - list
+      - watch
