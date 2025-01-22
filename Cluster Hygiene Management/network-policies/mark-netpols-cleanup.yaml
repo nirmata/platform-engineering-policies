@@ -1,0 +1,51 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: unused-network-policies-policy
+spec:
+  validationFailureAction: Audit
+  background: true
+  # backgroundScanInterval: 1m
+  rules:
+  - name: unused-network-policies-rule
+    match:
+      any:
+      - resources:
+          kinds:
+          - NetworkPolicy
+    context:
+    - name: pdskey
+      variable:
+        jmesPath: "request.object.spec.podSelector.matchLabels.keys(@) |[0]"
+    - name: pdsvalue
+      variable:
+        jmesPath: "request.object.spec.podSelector.matchLabels.values(@) |[0]"
+    - name: pdcount
+      apiCall:
+        urlPath: "/api/v1/namespaces/{{request.namespace}}/pods?labelSelector={{pdskey}}={{pdsvalue}}"
+        jmesPath: "items[] || `[]` | length(@)"
+#    validate:
+#      message: "{{request.object.metadata.name}} network policy in {{request.namespace}} namespace is not used."
+#      deny:
+#        conditions:
+#          any:
+#          - key: "{{pdcount}}"
+#            operator: Equals
+#            value: 0
+    mutate:
+      targets:
+      - apiVersion: networking.k8s.io/v1
+        kind: NetworkPolicy
+        namespace: "{{request.namespace}}"
+        preconditions:
+          all:
+          - key: "{{pdcount}}"
+            operator: Equals
+            value: 0
+          - key: "{{target.metadata.annotations.\"allow-delete\"  || 'empty' }}"
+            operator: NotEquals
+            value: "true"
+      patchStrategicMerge:
+        metadata:
+          annotations:
+            allow-delete: "true"

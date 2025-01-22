@@ -1,0 +1,16 @@
+apiVersion: kyverno.io/v2beta1
+kind: ClusterCleanupPolicy
+metadata:
+  name: clean-unused-netpols
+  annotations:
+    policies.kyverno.io/description: "Network policies that are unused must be removed periodically as these may fill up the etcd space over a period of time. This policy cleans up network policies that have the annotation, `allow-delete: true`. "
+spec:
+  match:
+    any:
+    - resources:
+        annotations:
+          allow-delete: "true"
+        kinds:
+        - NetworkPolicy
+  schedule: "* * * * *"
+
