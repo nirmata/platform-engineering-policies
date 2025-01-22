@@ -5,7 +5,6 @@ metadata:
 spec:
   validationFailureAction: Audit
   background: true
-  # backgroundScanInterval: 1m
   rules:
   - name: unused-network-policies-rule
     match:
@@ -24,14 +23,6 @@ spec:
       apiCall:
         urlPath: "/api/v1/namespaces/{{request.namespace}}/pods?labelSelector={{pdskey}}={{pdsvalue}}"
         jmesPath: "items[] || `[]` | length(@)"
-#    validate:
-#      message: "{{request.object.metadata.name}} network policy in {{request.namespace}} namespace is not used."
-#      deny:
-#        conditions:
-#          any:
-#          - key: "{{pdcount}}"
-#            operator: Equals
-#            value: 0
     mutate:
       targets:
       - apiVersion: networking.k8s.io/v1
