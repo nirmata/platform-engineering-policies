@@ -1,0 +1,36 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: restrict-networkpolicy-modifications
+  annotations:
+    policies.kyverno.io/title: Restrict NetworkPolicy Modifications
+    policies.kyverno.io/category: Security
+    policies.kyverno.io/subject: NetworkPolicy
+    policies.kyverno.io/description: >
+      This policy prevents users from creating, editing, or deleting NetworkPolicy resources
+      unless they have the cluster-admin role.
+spec:
+  validationFailureAction: enforce
+  background: false
+  rules:
+    - name: block-networkpolicy-changes
+      match:
+        any:
+          - resources:
+              kinds:
+                - NetworkPolicy
+      exclude:
+        any:
+          - clusterRoles:
+              - cluster-admin
+      validate:
+        message: "Creating or modifying NetworkPolicy resources is restricted to cluster-admins."
+        deny:
+          conditions:
+            any:
+              - key: "{{request.operation}}"
+                operator: AnyIn
+                value:
+                  - CREATE
+                  - UPDATE
+                  - DELETE
