@@ -31,9 +31,9 @@ spec:
           - key: "{{target.metadata.ownerReferences[] || `[]` }}"
             operator: Equals
             value: []
-          - key: "{{target.metadata.annotations.\"delete-resource\"  || 'empty' }}"
+          - key: "{{target.metadata.annotations.\"allow-delete\"  || 'empty' }}"
             operator: NotEquals
-            value: allow
+            value: "true"
       patchStrategicMerge:
         metadata:
           annotations:
