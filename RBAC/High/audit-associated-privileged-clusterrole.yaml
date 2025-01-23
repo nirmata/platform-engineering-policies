@@ -1,0 +1,44 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: check-associated-privileged-clusterrole
+  annotations:
+    policies.kyverno.io/title: Allowing creation of rolebinding/clusterrolebinding and associate privileged clusterrole to itself
+    policies.kyverno.io/category: RBAC
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/minversion: 1.12.0
+    kyverno.io/kyverno-version: 1.12.0
+    kyverno.io/kubernetes-version: "1.28"
+    policies.kyverno.io/subject: RoleBinding
+    policies.kyverno.io/description: >-
+      This policy will check for all the service accounts which are mapped with the rolebinding/clusterrolebinding allowing privileged clusterrole to be associated. 
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: check-create-update-malicious-resource-roles
+      match:
+        any:
+          - resources:
+              kinds:
+                - RoleBinding
+      preconditions:
+        any:
+        - key: "{{ request.object.roleRef.kind || 'ClusterRole' }}"
+          operator: Equals
+          value: ClusterRole
+      context:
+        - name: role
+          apiCall:
+            urlPath: "/apis/rbac.authorization.k8s.io/v1/clusterroles/{{ request.object.roleRef.name }}"
+      validate:
+        message: >- 
+           RoleBinding {{ request.object.metadata.name }} with subjects {{ request.object.subjects[].name }} 
+           is attached to a privileged ClusterRole "{{role.metadata.name}}"
+        deny:
+          conditions:
+            any:
+              - key: "{{ ( contains(role.rules[].verbs[], 'create') && contains(role.rules[].resources[], 'rolebindings') && contains(role.rules[].apiGroups[], 'rbac.authorization.k8s.io')) && (contains(role.rules[].verbs[], 'bind') && contains(role.rules[].resources[], 'clusterroles') && contains(role.rules[].apiGroups[], 'rbac.authorization.k8s.io')) }}"
+                operator: Equals
+                value: true
+
