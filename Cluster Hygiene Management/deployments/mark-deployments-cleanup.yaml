@@ -1,0 +1,43 @@
+#The described logic currently deletes the ReplicaSets created 30 seconds ago. You can adjust this timeframe according to your specific requirements.
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: mark-unused-deployments
+spec:
+  validationFailureAction: Audit
+  rules: 
+  - name: mark-unused-deployments
+    match:
+      any:
+      - resources:
+          kinds:
+            - Deployment
+    exclude:
+      any:
+      - resources:
+          namespaces:
+            - kube-system
+    mutate:
+      targets:
+      - apiVersion: apps/v1
+        kind: Deployment
+        namespace: "{{request.namespace}}"
+        context: 
+        - name: objName
+          variable: 
+            jmesPath: "target.status.conditions[?message == 'Deployment has minimum availability.'].lastUpdateTime |[0]"
+        preconditions:
+          all:
+          - key: "{{ target.spec.replicas }}"
+            operator: Equals
+            value: 0
+          - key: "{{ time_diff('{{objName}}','{{ time_now_utc() }}') }}"
+            operator: GreaterThan
+            value: "0h5m0s"
+          - key: "{{target.metadata.annotations.\"allow-delete\"  || 'empty' }}"
+            operator: NotEquals
+            value: "true"
+      patchStrategicMerge:
+        metadata:
+          annotations:
+            allow-delete: "true"

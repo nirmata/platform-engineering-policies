@@ -35,8 +35,10 @@ spec:
     preconditions:
       all:
       - key: "{{request.operation || 'BACKGROUND'}}"
-        operator: Equals
-        value: UPDATE
+        operator: AnyIn
+        value: 
+        - UPDATE
+        - CREATE
       - key: "{{ sum(request.object.status.containerStatuses[*].restartCount || [`0`]) }}"
         operator: GreaterThan
         value: 1

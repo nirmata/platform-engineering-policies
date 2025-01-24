@@ -1,0 +1,56 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: mark-unused-namespaces
+spec:
+  validationFailureAction: Audit
+  rules: 
+  - name: mark-unused-namespaces
+    match:
+      any:
+      - resources:
+          kinds:
+            - Namespace
+    exclude:
+      any:
+      - resources:
+          namespaces:
+            - kube-system
+            - default
+            - kube-node-lease
+            - kube-public
+    mutate:
+      targets:
+      - apiVersion: v1
+        kind: Namespace 
+        context:
+        - name: pdcount
+          apiCall:
+            urlPath: "/api/v1/namespaces/{{target.metadata.name}}/pods"
+            jmesPath: "items[] || `[]` | length(@)"
+        - name: deplycount
+          apiCall:
+            urlPath: "/apis/apps/v1/namespaces/{{target.metadata.name}}/deployments"
+            jmesPath: "items[] || `[]` | length(@)"
+        - name: svccount
+          apiCall:
+            urlPath: "/api/v1/namespaces/{{request.object.metadata.name}}/services"
+            jmesPath: "items[] || `[]` | length(@)"        
+        preconditions:
+          all:
+          - key: "{{ pdcount }}"
+            operator: Equals
+            value: 0
+          - key: "{{ deplycount }}"
+            operator: Equals
+            value: 0
+          - key: "{{ svccount }}"
+            operator: Equals
+            value: 0
+          - key: "{{target.metadata.annotations.\"allow-delete\"  || 'empty' }}"
+            operator: NotEquals
+            value: "true"
+      patchStrategicMerge:
+        metadata:
+          annotations:
+            allow-delete: "true"

@@ -1,0 +1,43 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: mark-unused-services-cleanup
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+  - name: mark-unused-services-cleanup
+    match:
+      any:
+      - resources:
+          kinds:
+          - Service
+    mutate:
+      targets:
+      - apiVersion: v1
+        kind: Service
+        namespace: "{{request.namespace}}"
+        context:
+        - name: pdskey
+          variable:
+            jmesPath: "target.spec.selector.keys(@) |[0]"
+        - name: pdsvalue
+          variable:
+            jmesPath: "target.spec.selector.values(@) |[0]"
+        - name: pdcount
+          apiCall:
+            urlPath: "/api/v1/namespaces/{{target.metadata.namespace}}/pods?labelSelector={{pdskey}}={{pdsvalue}}"
+            jmesPath: "items[] || `[]` | length(@)"        
+        preconditions:
+          all:
+          - key: "{{pdcount}}"
+            operator: Equals
+            value: 0
+          - key: "{{target.metadata.annotations.\"allow-delete\"  || 'empty' }}"
+            operator: NotEquals
+            value: "true"
+      patchStrategicMerge:
+        metadata:
+          annotations:
+            allow-delete: "true"
+
