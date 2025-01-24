@@ -1,4 +1,4 @@
-# Platform Engineering Automation
+# Platform Engineering Policies
 
 Welcome to the Platform Engineering Policies repository! This collection is curated by Nirmata to provide a comprehensive set of Kyverno policies aimed at enhancing various aspects of Kubernetes cluster management. These policies are organized into categories such as Best Practices, Cluster Hygiene Management, FinOps, Pod Security, RBAC, Resource Optimization, Troubleshooting Assistance, and Workload Security. Each category contains policies designed to enforce standards, optimize resources, and ensure the security and efficiency of your Kubernetes environments. Explore the folders to find policies that suit your platform engineering needs.
 
