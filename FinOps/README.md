@@ -2,10 +2,10 @@
 
 **Clone Repository:**
 
-Clone the kyverno-policies repository.
+Clone the repository.
 
 ```console
-git clone https://github.com/nirmata/kyverno-policies.git
+git clone https://github.com/nirmata/platform-engineering-policies.git
 ```
 
 **Install FinOps Policies:**
@@ -15,7 +15,7 @@ To install FinOps Compliance policy
 
 ```console
 cd kyverno-policies
-kubectl apply -f finops
+kubectl apply -f Finops
 ```
 
 Once policies are installed, you can check if they are ready using the command:
