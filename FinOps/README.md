@@ -14,7 +14,7 @@ To install FinOps Compliance policy
 
 
 ```console
-cd kyverno-policies
+cd platform-engineering-policies
 kubectl apply -f Finops
 ```
 

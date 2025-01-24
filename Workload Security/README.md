@@ -14,7 +14,7 @@ To install Workload Security Compliance policy
 
 
 ```console
-cd kyverno-policies
+cd platform-engineering-policies
 kubectl apply -f workload-security
 ```
 
