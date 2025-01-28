@@ -1,23 +1,22 @@
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
-  name: check-serviceaccount-any-operation-clusterrole
+  name: check-attach-pods
   annotations:
-    policies.kyverno.io/title: Check for ServiceAccounts with non compliant Roles/ClusterRoles which allow operation on any resource.
+    policies.kyverno.io/title: Attaching pod and view all its logs in realtime
     policies.kyverno.io/category: RBAC
-    policies.kyverno.io/severity: critical
+    policies.kyverno.io/severity: high
     policies.kyverno.io/minversion: 1.12.0
     kyverno.io/kyverno-version: 1.12.0
     kyverno.io/kubernetes-version: "1.28"
     policies.kyverno.io/subject: ClusterRoleBinding
     policies.kyverno.io/description: >-
-      This policy will check for all the service accounts which are mapped with the wildcard resource and apiGroup for given verb 
-      (delete, deletecollection, create, list, get, impersonate) 
+      This policy will check for all the service accounts which are mapped with a Roles/ClusterRoles allowing the user to attach a shell with a pod and view the logs in realtime.
 spec:
   validationFailureAction: Audit
   background: true
   rules:
-    - name: check-wildcard-resources-apigroups-clusterrole
+    - name: check-attach-pods-clusterrole
       match:
         any:
         - resources:
@@ -34,6 +33,6 @@ spec:
         deny:
           conditions:
             any:
-              - key: "{{ (contains(role.rules[].verbs[], 'delete') || contains(role.rules[].verbs[], 'deletecollection') || contains(role.rules[].verbs[], 'create') || contains(role.rules[].verbs[], 'list') || contains(role.rules[].verbs[], 'get') || contains(role.rules[].verbs[], 'impersonate') ) && contains(role.rules[].resources[], '*') && contains(role.rules[].apiGroups[], '*') }}"
+              - key: "{{ ( contains(role.rules[].verbs[], 'create') && contains(role.rules[].resources[], 'pods/attach')) && (contains(role.rules[].verbs[], 'get') && contains(role.rules[].resources[], 'pods')) && contains(role.rules[].apiGroups[], '*') }}"
                 operator: Equals
                 value: true

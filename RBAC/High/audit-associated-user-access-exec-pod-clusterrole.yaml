@@ -1,23 +1,22 @@
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
-  name: check-create-malicious-resource
+  name: check-user-access-exec-pods
   annotations:
-    policies.kyverno.io/title: Allowing to create a malicious pod
+    policies.kyverno.io/title: Getting shell on pods
     policies.kyverno.io/category: RBAC
     policies.kyverno.io/severity: high
     policies.kyverno.io/minversion: 1.12.0
     kyverno.io/kyverno-version: 1.12.0
-    kyverno.io/kubernetes-version: "1.22-1.23"
+    kyverno.io/kubernetes-version: "1.28"
     policies.kyverno.io/subject: ClusterRoleBinding
     policies.kyverno.io/description: >-
-      This policy will check for all the service accounts which are mapped with Roles/ClusterRoles allowing user to create malicious pods
-      (deployment, daemonsets, statefulsets, replicationcontollers, replicasets, jobs, cronjobs) for wildcard apiGroups.
+      This policy will check for all the Service Accounts which are mapped with a Roles/ClusterRoles allowing the user to exec inside a pod.
 spec:
   validationFailureAction: Audit
   background: true
   rules:
-    - name: check-create-update-malicious-resource-clusterrole
+    - name: check-exec-pods-clusterrole
       match:
         any:
         - resources:
@@ -34,10 +33,10 @@ spec:
         deny:
           conditions:
             any:
-              - key: "{{ ( contains(role.rules[].verbs[], 'create') || contains(role.rules[].verbs[], 'update')) && ( contains(role.rules[].resources[], 'pods') || contains(role.rules[].resources[], 'deployments') || contains(role.rules[].resources[], 'daemonsets') || contains(role.rules[].resources[], 'statefulsets') || contains(role.rules[].resources[], 'replicationcontrollers') || contains(role.rules[].resources[], 'replicasets') || contains(role.rules[].resources[], 'jobs') || contains(role.rules[].resources[], 'cronjobs')) && contains(role.rules[].apiGroups[], '*') }}"
+              - key: "{{ ( contains(role.rules[].verbs[], 'create') && contains(role.rules[].resources[], 'pods/exec')) && (contains(role.rules[].verbs[], 'get') && contains(role.rules[].resources[], 'pods')) && contains(role.rules[].apiGroups[], '*') }}"
                 operator: Equals
                 value: true
-    - name: check-create-update-malicious-resource-roles
+    - name: check-exec-pods-roles
       match:
         any:
           - resources:
@@ -59,6 +58,6 @@ spec:
         deny:
           conditions:
             any:
-              - key: "{{ ( contains(role.rules[].verbs[], 'create') || contains(role.rules[].verbs[], 'update')) && ( contains(role.rules[].resources[], 'pods') || contains(role.rules[].resources[], 'deployments') || contains(role.rules[].resources[], 'daemonsets') || contains(role.rules[].resources[], 'statefulsets') || contains(role.rules[].resources[], 'replicationcontrollers') || contains(role.rules[].resources[], 'replicasets') || contains(role.rules[].resources[], 'jobs') || contains(role.rules[].resources[], 'cronjobs')) && contains(role.rules[].apiGroups[], '*') }}"
+              - key: "{{ ( contains(role.rules[].verbs[], 'create') && contains(role.rules[].resources[], 'pods/exec')) && (contains(role.rules[].verbs[], 'get') && contains(role.rules[].resources[], 'pods')) && contains(role.rules[].apiGroups[], '*') }}"
                 operator: Equals
                 value: true

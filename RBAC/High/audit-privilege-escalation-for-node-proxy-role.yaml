@@ -1,22 +1,22 @@
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
-  name: check-add-user-access-rolebinding
+  name: check-privilege-escalation-for-node-proxy
   annotations:
-    policies.kyverno.io/title:  Allowing users in a rolebinding to add other users to their rolebindings
+    policies.kyverno.io/title: Privilege Escalation from Node/Proxy
     policies.kyverno.io/category: RBAC
-    policies.kyverno.io/severity: low
+    policies.kyverno.io/severity: high
     policies.kyverno.io/minversion: 1.12.0
     kyverno.io/kyverno-version: 1.12.0
     kyverno.io/kubernetes-version: "1.28"
     policies.kyverno.io/subject: ClusterRoleBinding
     policies.kyverno.io/description: >-
-      This policy will check for all the service accounts which are mapped with a rolebinding allowing the user to map their rolebinding to other users.
+      This policy will check for all the service accounts which are mapped with Roles/ClusterRoles allowing listing and creating node/proxy resource in wildcard apiGroups.
 spec:
   validationFailureAction: Audit
   background: true
   rules:
-    - name: check-create-update-malicious-resource-roles
+    - name: check-execute-command-node-proxy-roles
       match:
         any:
           - resources:
@@ -34,10 +34,10 @@ spec:
       validate:
         message: >- 
            RoleBinding {{ request.object.metadata.name }} with subjects {{ request.object.subjects[].name }} 
-           is using "{{role.metadata.name}}"
+           is using role {{role.metadata.name}}
         deny:
           conditions:
             any:
-              - key: "{{ ( contains(role.rules[].verbs[], 'get') || contains(role.rules[].verbs[], 'patch')) && contains(role.rules[].resources[], 'rolebindings') && contains(role.rules[].apiGroups[], '*')}}"
+              - key: "{{ ( contains(role.rules[].verbs[], 'get') || contains(role.rules[].verbs[], 'create')) && contains(role.rules[].resources[], 'nodes/proxy') && contains(role.rules[].apiGroups[], '*') }}"
                 operator: Equals
                 value: true

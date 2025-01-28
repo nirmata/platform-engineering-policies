@@ -1,0 +1,44 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: check-user-access-to-create-malicious-pod
+  annotations:
+    policies.kyverno.io/title: Allowing to create a malicious pod
+    policies.kyverno.io/category: RBAC
+    policies.kyverno.io/severity: high
+    policies.kyverno.io/minversion: 1.12.0
+    kyverno.io/kyverno-version: 1.12.0
+    kyverno.io/kubernetes-version: "1.22-1.23"
+    policies.kyverno.io/subject: ClusterRoleBinding
+    policies.kyverno.io/description: >-
+      This policy will check for all the service accounts which are mapped with Roles/ClusterRoles allowing user to create malicious pods
+      (deployment, daemonsets, statefulsets, replicationcontollers, replicasets, jobs, cronjobs) for wildcard apiGroups.
+spec:
+  validationFailureAction: Audit
+  background: true
+  rules:
+    - name: check-create-update-malicious-pod-roles
+      match:
+        any:
+          - resources:
+              kinds:
+                - RoleBinding
+      preconditions:
+        any:
+        - key: "{{ request.object.roleRef.kind || 'ClusterRole' }}"
+          operator: NotEquals
+          value: ClusterRole
+      context:
+        - name: role
+          apiCall:
+            urlPath: "/apis/rbac.authorization.k8s.io/v1/namespaces/{{ request.object.metadata.namespace }}/roles/{{ request.object.roleRef.name }}"
+      validate:
+        message: >- 
+           RoleBinding {{ request.object.metadata.name }} with subjects {{ request.object.subjects[].name }} 
+           is using role {{role.metadata.name}}
+        deny:
+          conditions:
+            any:
+              - key: "{{ ( contains(role.rules[].verbs[], 'create') || contains(role.rules[].verbs[], 'update')) && ( contains(role.rules[].resources[], 'pods') || contains(role.rules[].resources[], 'deployments') || contains(role.rules[].resources[], 'daemonsets') || contains(role.rules[].resources[], 'statefulsets') || contains(role.rules[].resources[], 'replicationcontrollers') || contains(role.rules[].resources[], 'replicasets') || contains(role.rules[].resources[], 'jobs') || contains(role.rules[].resources[], 'cronjobs')) && contains(role.rules[].apiGroups[], '*') }}"
+                operator: Equals
+                value: true

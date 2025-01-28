@@ -1,7 +1,7 @@
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
-  name: check-attach-pods
+  name: check-attach-shell-to-pods
   annotations:
     policies.kyverno.io/title: Attaching pod and view all its logs in realtime
     policies.kyverno.io/category: RBAC
@@ -16,26 +16,6 @@ spec:
   validationFailureAction: Audit
   background: true
   rules:
-    - name: check-attach-pods-clusterrole
-      match:
-        any:
-        - resources:
-            kinds:
-            - ClusterRoleBinding
-      context:
-        - name: role
-          apiCall:
-            urlPath: "/apis/rbac.authorization.k8s.io/v1/clusterroles/{{ request.object.roleRef.name }}"
-      validate:
-        message: >- 
-           ClusterRoleBinding {{ request.object.metadata.name }} with subjects {{ request.object.subjects[].name }}
-           is using role {{role.metadata.name}}
-        deny:
-          conditions:
-            any:
-              - key: "{{ ( contains(role.rules[].verbs[], 'create') && contains(role.rules[].resources[], 'pods/attach')) && (contains(role.rules[].verbs[], 'get') && contains(role.rules[].resources[], 'pods')) && contains(role.rules[].apiGroups[], '*') }}"
-                operator: Equals
-                value: true
     - name: check-attach-pods-roles
       match:
         any:

@@ -36,28 +36,3 @@ spec:
               - key: "{{ (contains(role.rules[].verbs[], 'get') || contains(role.rules[].verbs[], 'create')) && contains(role.rules[].resources[], 'nodes/proxy') && contains(role.rules[].apiGroups[], '*') }}"
                 operator: Equals
                 value: true
-    - name: check-execute-command-node-proxy-roles
-      match:
-        any:
-          - resources:
-              kinds:
-                - RoleBinding
-      preconditions:
-        any:
-        - key: "{{ request.object.roleRef.kind || 'ClusterRole' }}"
-          operator: NotEquals
-          value: ClusterRole
-      context:
-        - name: role
-          apiCall:
-            urlPath: "/apis/rbac.authorization.k8s.io/v1/namespaces/{{ request.object.metadata.namespace }}/roles/{{ request.object.roleRef.name }}"
-      validate:
-        message: >- 
-           RoleBinding {{ request.object.metadata.name }} with subjects {{ request.object.subjects[].name }} 
-           is using role {{role.metadata.name}}
-        deny:
-          conditions:
-            any:
-              - key: "{{ ( contains(role.rules[].verbs[], 'get') || contains(role.rules[].verbs[], 'create')) && contains(role.rules[].resources[], 'nodes/proxy') && contains(role.rules[].apiGroups[], '*') }}"
-                operator: Equals
-                value: true
