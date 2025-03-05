@@ -21,6 +21,8 @@ spec:
       - resources:
           kinds:
           - Pod
+          namespaces:
+          - kyverno-test
     mutate:
       targets:
       - apiVersion: v1
