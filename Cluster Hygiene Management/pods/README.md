@@ -14,7 +14,7 @@ kubectl apply -f cleanup-clusterrole.yaml -f cleanup-clusterrolebinding.yaml -f 
 ```
 
 ### Deploying the Kyverno Policies
-The first step is to deploy the mutation policy. This will mark all the pods for cleanup. 
+The first step is to deploy the mutation policy. This will mark all the pods for cleanup. Please note that this policy only applies `kyverno-test` namespace
 
 ```
 kubectl apply -f mark-bare-pods-cleanup.yaml
