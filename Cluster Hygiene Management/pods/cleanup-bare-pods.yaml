@@ -20,5 +20,7 @@ spec:
           allow-delete: "true"
         kinds:
         - Pod
+        namespaces:
+        - kyverno-test        
   schedule: "* * * * *"
 
