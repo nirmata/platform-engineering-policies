@@ -58,8 +58,8 @@ The cleanup process follows a 5-stage progressive approach:
 
 **Purpose**: Identifies and marks problematic deployments
 - Monitors deployments where all pods are in CrashLoopBackOff state
-- Checks if the last update timestamp is > 1 minute old
-- Adds identification annotations for tracking
+- Checks if the last update timestamp of the latest replicaSet of a deployment is > 1 minute old
+- Adds identification annotations for tracking. Here `{{ time_now_utc() }}` refers to the time in UTC timezone.
 
 **Annotations Added**:
 ```yaml
@@ -72,7 +72,7 @@ timestamp: "{{ time_now_utc() }}"
 
 **Purpose**: Provides visibility and alerts for marked deployments
 - Audit-mode policy that flags deployments marked for action
-- Generates policy reports for monitoring dashboards
+- Generates policy reports for monitoring dashboards (Nirmata Control Hub (NCH) or Grafana)
 - Notifies users about pending scale-down actions
 
 ### 3. Recovery & Label Removal
