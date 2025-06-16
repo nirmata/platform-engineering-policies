@@ -1,0 +1,31 @@
+apiVersion: kyverno.io/v2beta1
+kind: ClusterCleanupPolicy
+metadata:
+  name: cleanup-stale-deployments
+  annotations:
+    policies.kyverno.io/title: Cleanup stale deployments
+    policies.kyverno.io/category: Other
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/subject: Deployment
+    policies.kyverno.io/description: >-
+      This policy performs the final cleanup stage of the automated deployment resource optimization system by permanently removing deployments that have been scaled down due to persistent CrashLoopBackOff issues. It targets deployments that contain a 'scaledowntimestamp' annotation, indicating they have already been scaled to zero replicas by the previous policy in the chain. The policy completely removes these failed deployments from the cluster to free up resources, and prevent accumulation of unused objects. This is the final stage in a 5-policy progressive cleanup system that includes detection, auditing, recovery handling, scaling down, and deletion.
+spec:
+  match:
+    any:
+    - resources:
+        kinds:
+          - Deployment
+  exclude:
+    any:
+    - resources:
+        namespaces:
+          - kube-system
+  conditions:
+    all:
+    - key: "{{ target.spec.replicas }}"
+      operator: Equals
+      value: 0
+    - key: "{{ time_diff('{{target.metadata.annotations.scaledowntimestamp}}','{{ time_now_utc() }}') }}"
+      operator: GreaterThan
+      value: "0h0m30s"
+  schedule: "*/1 * * * *"
