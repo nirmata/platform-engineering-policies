@@ -196,22 +196,6 @@ kubectl get events --field-selector reason=PolicyViolation
 - Set up alerting on policy violations
 - Document deployment recovery procedures
 
-## 📈 Expected Results
-
-Organizations implementing this system typically see:
-- **30-50% reduction** in failed pod restart cycles
-- **20-30% improvement** in cluster resource utilization
-- **Faster incident response** through automated early detection
-- **Reduced operational overhead** from manual cleanup tasks
-
-## 🤝 Contributing
-
-To enhance or modify these policies:
-1. Test changes in non-production environments
-2. Validate policy syntax using Kyverno CLI
-3. Update documentation for any configuration changes
-4. Monitor policy reports after deployment
-
 ## 📚 Additional Resources
 
 - [Kyverno Documentation](https://kyverno.io/docs/)
