@@ -1,0 +1,25 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: marked-for-scale-down-validation
+  annotations:
+    policies.kyverno.io/title: Marked for Scaled Down
+    policies.kyverno.io/category: Platform Engineering
+    policies.kyverno.io/description: >-
+      This is a Audit policy that flags any deployments that have a label 'cleanup.resource=marked-for-action' indicating the users the deployment will be scaled down to 0 replicas.
+spec:
+  validationFailureAction: Audit
+  rules:
+  - name: marked-for-scale-down-validation-rule
+    match:
+      any:
+      - resources:
+          kinds:
+          - Deployment
+    validate:
+      message: "The deployment {{request.object.metadata.name}} in {{request.namespace}} namespace is markeded for scale down as it has `cleanup.resource` label"
+      deny:
+        conditions:
+          - key: "{{ request.object.metadata.annotations.\"cleanup.resource\" || '' }}"
+            operator: Equals
+            value: "marked-for-action"

@@ -1,0 +1,70 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: remove-deployment-scale-down-label 
+spec:
+  background: false
+  rules:
+  - name: remove-deployment-scale-down-label-rule 
+    match:
+      any:
+      - resources:
+          kinds:
+          - Pod.status
+    context:
+    - name: rsnamev2
+      variable:
+        jmesPath: "request.object.metadata.ownerReferences[0].name"
+        default: ''
+    - name: deploymentnamev2
+      apiCall:
+        urlPath: "/apis/apps/v1/namespaces/{{request.namespace}}/replicasets"
+        jmesPath: "items[?metadata.name=='{{rsnamev2}}'].metadata.ownerReferences[0].name | [0]"
+    - name: desiredReplicasv2
+      apiCall:
+        urlPath: "/apis/apps/v1/namespaces/{{request.namespace}}/deployments/{{deploymentnamev2}}"
+        jmesPath: "spec.replicas"
+    - name: matchLabelsv2
+      apiCall:
+        urlPath: "/apis/apps/v1/namespaces/{{request.namespace}}/deployments/{{deploymentnamev2}}"
+        jmesPath: "spec.selector.matchLabelsv2"
+    - name: labelSelectorv2
+      variable:
+#        jmesPath: "join(',', [join('=', [keys(matchLabelsv2)[0], values(matchLabelsv2)[0]]), join('=', [keys(matchLabelsv2)[1], values(matchLabelsv2)[1]])])"
+        jmesPath: "join(',', [join('=', [keys(matchLabelsv2)[0], values(matchLabelsv2)[0]])]) || join(',', [join('=', [keys(matchLabelsv2)[0], values(matchLabelsv2)[0]]), join('=', [keys(matchLabelsv2)[1], values(matchLabelsv2)[1]])]) || join(',', [join('=', [keys(matchLabelsv2)[0], values(matchLabelsv2)[0]]), join('=', [keys(matchLabelsv2)[1], values(matchLabelsv2)[1]]), join('=', [keys(matchLabelsv2)[2], values(matchLabelsv2)[2]])]) || join(',', [join('=', [keys(matchLabelsv2)[0], values(matchLabelsv2)[0]]), join('=', [keys(matchLabelsv2)[1], values(matchLabelsv2)[1]]), join('=', [keys(matchLabelsv2)[2], values(matchLabelsv2)[2]]), join('=', [keys(matchLabelsv2)[3], values(matchLabelsv2)[3]])]) || join(',', [join('=', [keys(matchLabelsv2)[0], values(matchLabelsv2)[0]]), join('=', [keys(matchLabelsv2)[1], values(matchLabelsv2)[1]]), join('=', [keys(matchLabelsv2)[2], values(matchLabelsv2)[2]]), join('=', [keys(matchLabelsv2)[3], values(matchLabelsv2)[3]]), join('=', [keys(matchLabelsv2)[4], values(matchLabelsv2)[4]])]) "
+    - name: crashedReplicasv2
+      apiCall:
+        urlPath: "/api/v1/namespaces/{{request.namespace}}/pods/?labelSelectorv2={{labelSelectorv2}}"
+        jmesPath: "items[?status.containerStatuses[?state.waiting.reason == 'CrashLoopBackOff']] | length(@)"
+    - name: runningReplicasv2
+      apiCall:
+        urlPath: "/api/v1/namespaces/{{request.namespace}}/pods/?labelSelectorv2={{labelSelectorv2}}"
+        jmesPath: "items[?status.containerStatuses[?ready == `true` && state.running]] | length(@)"
+    - name: crashedInitContainersReplicasv2
+      apiCall:
+        urlPath: "/api/v1/namespaces/{{request.namespace}}/pods/?labelSelectorv2={{labelSelectorv2}}"
+        jmesPath: "items[?status.initContainerStatuses[?state.waiting.reason == 'CrashLoopBackOff']] | length(@)"
+    - name: latestreplicasetnamev2
+      apiCall:
+        urlPath: "/apis/apps/v1/namespaces/{{request.namespace}}/replicasets"
+        jmesPath: "sort_by(items[?metadata.ownerReferences[0].name=='{{deploymentnamev2}}'], &metadata.creationTimestamp)[-1].metadata.name"
+    - name: lastUpdateRsTimestampv2
+      apiCall:
+        urlPath: "/apis/apps/v1/namespaces/{{request.namespace}}/replicasets/{{latestreplicasetnamev2}}"
+        jmesPath: "metadata.managedFields[-1].time"
+    preconditions:
+      all:
+      - key: "{{runningReplicasv2}}"
+        operator: NotEquals
+        value: 0
+    mutate:
+      targets:
+        - apiVersion: apps/v1
+          kind: Deployment
+          name: "{{deploymentnamev2}}"
+          namespace: "{{request.namespace}}"
+      patchesJson6902: |-
+        - path: "/metadata/annotations/cleanup.resource"
+          op: remove
+        - path: "/metadata/annotations/timestamp"
+          op: remove

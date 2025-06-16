@@ -1,0 +1,88 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: mark-deployment-scale-down    
+spec:
+  background: false
+  rules:
+  - name: mark-deployment-scale-down-rule
+    match:
+      any:
+      - resources:
+          kinds:
+          - Pod.status
+    context:
+    - name: rsname
+      variable:
+        jmesPath: "request.object.metadata.ownerReferences[0].name"
+        default: ''
+    - name: deploymentname
+      apiCall:
+        urlPath: "/apis/apps/v1/namespaces/{{request.namespace}}/replicasets"
+        jmesPath: "items[?metadata.name=='{{rsname}}'].metadata.ownerReferences[0].name | [0]"
+    - name: desiredReplicas
+      apiCall:
+        urlPath: "/apis/apps/v1/namespaces/{{request.namespace}}/deployments/{{deploymentname}}"
+        jmesPath: "spec.replicas"
+    - name: matchLabels
+      apiCall:
+        urlPath: "/apis/apps/v1/namespaces/{{request.namespace}}/deployments/{{deploymentname}}"
+        jmesPath: "spec.selector.matchLabels"
+    - name: labelSelector
+      variable:
+#        jmesPath: "join(',', [join('=', [keys(matchLabels)[0], values(matchLabels)[0]]), join('=', [keys(matchLabels)[1], values(matchLabels)[1]])])"
+        jmesPath: "join(',', [join('=', [keys(matchLabels)[0], values(matchLabels)[0]])]) || join(',', [join('=', [keys(matchLabels)[0], values(matchLabels)[0]]), join('=', [keys(matchLabels)[1], values(matchLabels)[1]])]) || join(',', [join('=', [keys(matchLabels)[0], values(matchLabels)[0]]), join('=', [keys(matchLabels)[1], values(matchLabels)[1]]), join('=', [keys(matchLabels)[2], values(matchLabels)[2]])]) || join(',', [join('=', [keys(matchLabels)[0], values(matchLabels)[0]]), join('=', [keys(matchLabels)[1], values(matchLabels)[1]]), join('=', [keys(matchLabels)[2], values(matchLabels)[2]]), join('=', [keys(matchLabels)[3], values(matchLabels)[3]])]) || join(',', [join('=', [keys(matchLabels)[0], values(matchLabels)[0]]), join('=', [keys(matchLabels)[1], values(matchLabels)[1]]), join('=', [keys(matchLabels)[2], values(matchLabels)[2]]), join('=', [keys(matchLabels)[3], values(matchLabels)[3]]), join('=', [keys(matchLabels)[4], values(matchLabels)[4]])]) "
+    - name: crashedReplicas
+      apiCall:
+        urlPath: "/api/v1/namespaces/{{request.namespace}}/pods/?labelSelector={{labelSelector}}"
+        jmesPath: "items[?status.containerStatuses[?state.waiting.reason == 'CrashLoopBackOff']] | length(@)"
+    - name: runningReplicas
+      apiCall:
+        urlPath: "/api/v1/namespaces/{{request.namespace}}/pods/?labelSelector={{labelSelector}}"
+        jmesPath: "items[?status.containerStatuses[?ready == `true` && state.running]] | length(@)"
+    - name: crashedInitContainersReplicas
+      apiCall:
+        urlPath: "/api/v1/namespaces/{{request.namespace}}/pods/?labelSelector={{labelSelector}}"
+        jmesPath: "items[?status.initContainerStatuses[?state.waiting.reason == 'CrashLoopBackOff']] | length(@)"
+    - name: latestreplicasetname
+      apiCall:
+        urlPath: "/apis/apps/v1/namespaces/{{request.namespace}}/replicasets"
+        jmesPath: "sort_by(items[?metadata.ownerReferences[0].name=='{{deploymentname}}'], &metadata.creationTimestamp)[-1].metadata.name"
+    - name: lastUpdateRsTimestamp
+      apiCall:
+        urlPath: "/apis/apps/v1/namespaces/{{request.namespace}}/replicasets/{{latestreplicasetname}}"
+        jmesPath: "metadata.managedFields[-1].time"
+    preconditions:
+      any:
+      - key: "{{ crashedReplicas }}"
+        operator: Equals
+        value: "{{ desiredReplicas }}"
+      - key: "{{ crashedInitContainersReplicas }}"
+        operator: Equals
+        value: "{{ desiredReplicas }}"
+      all:
+      - key: "{{ time_since('', '{{lastUpdateRsTimestamp}}', '') }}"
+        operator: GreaterThan
+        value: 1m # Set to >24h for production
+      - key: "{{runningReplicas}}"
+        operator: Equals
+        value: 0
+    mutate:
+      targets:
+        - apiVersion: apps/v1
+          kind: Deployment
+          name: "{{deploymentname}}"
+          namespace: "{{request.namespace}}"
+          preconditions:
+            any:
+#            - key: "{{target.metadata.annotations.cleanup.resource || ''}}"
+#              operator: Equals
+#              value: ''
+            - key: "{{target.metadata.annotations.timestamp || ''}}"
+              operator: Equals
+              value: ''
+      patchStrategicMerge:
+        metadata:
+          annotations:
+            cleanup.resource: "marked-for-action"
+            timestamp: "{{ time_now_utc() }}"

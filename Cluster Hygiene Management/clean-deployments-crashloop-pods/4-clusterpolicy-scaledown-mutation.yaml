@@ -1,0 +1,35 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: scale-down-deployment 
+spec:
+  mutateExistingOnPolicyUpdate: true
+  background: false
+  rules:
+  - name: scale-down-deployment-rule 
+    match:
+      any:
+      - resources:
+          annotations:
+            cleanup.resource: "marked-for-action"
+          kinds:
+          - Deployment
+    mutate:
+      targets:
+        - apiVersion: apps/v1
+          kind: Deployment
+          namespace: "{{request.namespace}}"
+          preconditions:
+            all:
+            - key: "{{ time_since('', '{{ target.metadata.annotations.timestamp }}', '') }}"
+              operator: GreaterThan
+              value: "5m"
+            - key: "{{ target.metadata.annotations.scaledowntimestamp || ''}}"
+              operator: Equals
+              value: ''
+      patchStrategicMerge:
+        metadata:
+          annotations:
+            scaledowntimestamp: "{{ time_now_utc() }}"
+        spec:
+          replicas: 0
