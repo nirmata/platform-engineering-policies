@@ -126,20 +126,10 @@ timestamp: "<previous_timestamp>"
 - **Recovery Window**: 5-minute grace period allows for quick fixes
 - **Transparency**: Clear annotation system shows system state
 
-## 📊 Implementation Timeline
-
-| Stage | Duration | Action | Recovery Possible |
-|-------|----------|--------|-------------------|
-| Detection | Immediate | Mark deployment | ✅ Full recovery |
-| Audit | Ongoing | Generate alerts | ✅ Full recovery |
-| Grace Period | 5 minutes | Monitor for recovery | ✅ Full recovery |
-| Scale Down | After 5 min | Set replicas = 0 | ⚠️ Manual intervention needed |
-| Deletion | After scale down | Remove deployment | ❌ No recovery |
-
 ## 🛠️ Installation
 
 1. **Prerequisites**:
-   - Kyverno v1.9+ installed in your cluster
+   - Kyverno v1.10+ installed in your cluster
    - Appropriate RBAC permissions for Kyverno to modify deployments
 
 2. **Deploy Policies**:
