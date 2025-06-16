@@ -32,7 +32,7 @@ flowchart LR
 
 ## Overview
 
-This repository contains a comprehensive Kyverno policy set designed to automatically detect, monitor, and clean up problematic deployments in Kubernetes clusters. The system focuses on identifying deployments with persistent CrashLoopBackOff issues and progressively scaling them down to optimize cluster resources.
+This folder contains a comprehensive Kyverno policy set designed to automatically detect, monitor, and clean up problematic deployments in Kubernetes clusters. The system focuses on identifying deployments with persistent CrashLoopBackOff issues and progressively scaling them down to optimize cluster resources.
 
 ## 🎯 Objectives
 
