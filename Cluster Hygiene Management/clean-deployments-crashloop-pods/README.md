@@ -131,7 +131,8 @@ timestamp: "<previous_timestamp>"
 1. **Prerequisites**:
    - Kyverno v1.10+ installed in your cluster
    - Appropriate RBAC permissions for Kyverno to modify deployments
-   - Kyverno's ConfigMap modified to remove the line `excludeGroups: system:nodes`. This is needed from v1.10 onwards. 
+   - Kyverno's ConfigMap modified to remove the line `excludeGroups: system:nodes`. This is needed from v1.10 onwards
+   - Kyverno's ConfigMap modified to generate events for all policy types (Update `generateSuccessEvents: "true"`)
 
 2. **Deploy Policies**:
    ```bash
