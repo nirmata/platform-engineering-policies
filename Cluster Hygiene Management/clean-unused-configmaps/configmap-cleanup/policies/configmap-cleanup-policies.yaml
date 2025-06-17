@@ -1,0 +1,244 @@
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: cleanup-unused-configmaps
+  annotations:
+    policies.kyverno.io/title: Cleanup Unused ConfigMaps
+    policies.kyverno.io/category: Best Practices
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/subject: ConfigMap
+    policies.kyverno.io/minversion: 1.6.0
+    policies.kyverno.io/description: >-
+      This policy identifies and removes ConfigMaps that are not used by any pods
+      through volumes, environment variables, or envFrom references.
+spec:
+  validationFailureAction: Audit
+  background: true
+  schemaValidation: false
+  rules:
+  - name: cleanup-unused-configmaps
+    match:
+      any:
+      - resources:
+          kinds:
+          - ConfigMap
+    context:
+    # Get all pods in the same namespace
+    - name: pods
+      apiCall:
+        urlPath: "/api/v1/namespaces/{{ request.namespace }}/pods"
+        jmesPath: "items[?status.phase != 'Succeeded' && status.phase != 'Failed']"
+    
+    # Check if ConfigMap is used in any pod
+    preconditions:
+      all:
+      # ConfigMap is not used in volumes
+      - key: "{{ pods[?spec.volumes[?configMap.name == '{{ request.object.metadata.name }}']].metadata.name | length(@) }}"
+        operator: Equals
+        value: 0
+      
+      # ConfigMap is not used in container env
+      - key: "{{ pods[?spec.containers[?env[?valueFrom.configMapKeyRef.name == '{{ request.object.metadata.name }}']]] | length(@) }}"
+        operator: Equals
+        value: 0
+      
+      # ConfigMap is not used in init container env
+      - key: "{{ pods[?spec.initContainers[?env[?valueFrom.configMapKeyRef.name == '{{ request.object.metadata.name }}']]] | length(@) }}"
+        operator: Equals
+        value: 0
+      
+      # ConfigMap is not used in container envFrom
+      - key: "{{ pods[?spec.containers[?envFrom[?configMapRef.name == '{{ request.object.metadata.name }}']]] | length(@) }}"
+        operator: Equals
+        value: 0
+      
+      # ConfigMap is not used in init container envFrom
+      - key: "{{ pods[?spec.initContainers[?envFrom[?configMapRef.name == '{{ request.object.metadata.name }}']]] | length(@) }}"
+        operator: Equals
+        value: 0
+      
+      # Exclude system namespaces and certain ConfigMaps
+      - key: "{{ request.namespace }}"
+        operator: AnyNotIn
+        value: ["kube-system", "kube-public", "kube-node-lease", "kyverno"]
+      
+      # Don't delete ConfigMaps with specific annotations (protection)
+      - key: "{{ request.object.metadata.annotations.\"cleanup.kyverno.io/exclude\" || 'false' }}"
+        operator: NotEquals
+        value: "true"
+    
+    validate:
+      message: "ConfigMap {{ request.object.metadata.name }} is not used by any pods and will be deleted"
+      deny: {}
+
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: audit-unused-configmaps
+  annotations:
+    policies.kyverno.io/title: Audit Unused ConfigMaps
+    policies.kyverno.io/category: Best Practices
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/subject: ConfigMap
+    policies.kyverno.io/minversion: 1.6.0
+    policies.kyverno.io/description: >-
+      This policy audits ConfigMaps that are not used by any pods and generates
+      reports for visibility before cleanup.
+spec:
+  background: true
+  schemaValidation: false
+  rules:
+  - name: audit-unused-configmaps
+    match:
+      any:
+      - resources:
+          kinds:
+          - ConfigMap
+    context:
+    # Get all pods in the same namespace
+    - name: pods
+      apiCall:
+        urlPath: "/api/v1/namespaces/{{ request.namespace }}/pods"
+        jmesPath: "items[?status.phase != 'Succeeded' && status.phase != 'Failed']"
+    
+    # Check if ConfigMap is used in any pod
+    preconditions:
+      all:
+      # ConfigMap is not used in volumes
+      - key: "{{ pods[?spec.volumes[?configMap.name == '{{ request.object.metadata.name }}']].metadata.name | length(@) }}"
+        operator: Equals
+        value: 0
+      
+      # ConfigMap is not used in container env
+      - key: "{{ pods[?spec.containers[?env[?valueFrom.configMapKeyRef.name == '{{ request.object.metadata.name }}']]] | length(@) }}"
+        operator: Equals
+        value: 0
+      
+      # ConfigMap is not used in init container env
+      - key: "{{ pods[?spec.initContainers[?env[?valueFrom.configMapKeyRef.name == '{{ request.object.metadata.name }}']]] | length(@) }}"
+        operator: Equals
+        value: 0
+      
+      # ConfigMap is not used in container envFrom
+      - key: "{{ pods[?spec.containers[?envFrom[?configMapRef.name == '{{ request.object.metadata.name }}']]] | length(@) }}"
+        operator: Equals
+        value: 0
+      
+      # ConfigMap is not used in init container envFrom
+      - key: "{{ pods[?spec.initContainers[?envFrom[?configMapRef.name == '{{ request.object.metadata.name }}']]] | length(@) }}"
+        operator: Equals
+        value: 0
+      
+      # Exclude system namespaces
+      - key: "{{ request.namespace }}"
+        operator: AnyNotIn
+        value: ["kube-system", "kube-public", "kube-node-lease", "kyverno"]
+      
+      # Don't audit ConfigMaps with specific annotations (protection)
+      - key: "{{ request.object.metadata.annotations.\"cleanup.kyverno.io/exclude\" || 'false' }}"
+        operator: NotEquals
+        value: "true"
+    
+    generate:
+      apiVersion: v1
+      kind: ConfigMap
+      name: "unused-configmap-report-{{ request.object.metadata.name }}"
+      namespace: "{{ request.namespace }}"
+      synchronize: true
+      data:
+        kind: ConfigMap
+        name: "{{ request.object.metadata.name }}"
+        namespace: "{{ request.namespace }}"
+        apiVersion: "{{ request.object.apiVersion }}"
+        report.yaml: |
+          configmap:
+            name: "{{ request.object.metadata.name }}"
+            namespace: "{{ request.namespace }}"
+            creationTimestamp: "{{ request.object.metadata.creationTimestamp }}"
+            labels: {{ request.object.metadata.labels || '{}' }}
+            annotations: {{ request.object.metadata.annotations || '{}' }}
+          status: unused
+          reason: "No pods found using this ConfigMap through volumes, env, or envFrom"
+          timestamp: "{{ time_now_utc() }}"
+          recommendation: "Consider removing this ConfigMap if it's no longer needed"
+
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: generate-configmap-usage-report
+  annotations:
+    policies.kyverno.io/title: Generate ConfigMap Usage Report
+    policies.kyverno.io/category: Best Practices
+    policies.kyverno.io/severity: low
+    policies.kyverno.io/subject: ConfigMap
+    policies.kyverno.io/minversion: 1.6.0
+    policies.kyverno.io/description: >-
+      This policy generates a comprehensive usage report for all ConfigMaps
+      showing which pods use them and how.
+spec:
+  background: true
+  schemaValidation: false
+  rules:
+  - name: generate-usage-report
+    match:
+      any:
+      - resources:
+          kinds:
+          - ConfigMap
+    context:
+    # Get all pods in the same namespace
+    - name: pods
+      apiCall:
+        urlPath: "/api/v1/namespaces/{{ request.namespace }}/pods"
+        jmesPath: "items[?status.phase != 'Succeeded' && status.phase != 'Failed']"
+    
+    # Find pods using this ConfigMap in volumes
+    - name: volumeUsers
+      variable:
+        jmesPath: "pods[?spec.volumes[?configMap.name == '{{ request.object.metadata.name }}']].metadata.name"
+    
+    # Find pods using this ConfigMap in env
+    - name: envUsers
+      variable:
+        jmesPath: "pods[?spec.containers[?env[?valueFrom.configMapKeyRef.name == '{{ request.object.metadata.name }}']].metadata.name || spec.initContainers[?env[?valueFrom.configMapKeyRef.name == '{{ request.object.metadata.name }}']].metadata.name].metadata.name"
+    
+    # Find pods using this ConfigMap in envFrom
+    - name: envFromUsers
+      variable:
+        jmesPath: "pods[?spec.containers[?envFrom[?configMapRef.name == '{{ request.object.metadata.name }}']].metadata.name || spec.initContainers[?envFrom[?configMapRef.name == '{{ request.object.metadata.name }}']].metadata.name].metadata.name"
+    
+    preconditions:
+      all:
+      # Only generate reports for non-system namespaces
+      - key: "{{ request.namespace }}"
+        operator: AnyNotIn
+        value: ["kube-system", "kube-public", "kube-node-lease", "kyverno"]
+    
+    generate:
+      apiVersion: v1
+      kind: ConfigMap
+      name: "configmap-usage-{{ request.object.metadata.name }}"
+      namespace: "{{ request.namespace }}"
+      synchronize: true
+      data:
+        kind: ConfigMap
+        name: "{{ request.object.metadata.name }}"
+        namespace: "{{ request.namespace }}"
+        apiVersion: "{{ request.object.apiVersion }}"
+        usage-report.yaml: |
+          configmap:
+            name: "{{ request.object.metadata.name }}"
+            namespace: "{{ request.namespace }}"
+            creationTimestamp: "{{ request.object.metadata.creationTimestamp }}"
+          usage:
+            volumeUsers: {{ volumeUsers || '[]' }}
+            envUsers: {{ envUsers || '[]' }}
+            envFromUsers: {{ envFromUsers || '[]' }}
+            volumeUserCount: {{ length(volumeUsers || `[]`) }}
+            envUserCount: {{ length(envUsers || `[]`) }}
+            envFromUserCount: {{ length(envFromUsers || `[]`) }}
+          status: "{{ (length(volumeUsers || `[]`) > `0` || length(envUsers || `[]`) > `0` || length(envFromUsers || `[]`) > `0`) && 'used' || 'unused' }}"
+          timestamp: "{{ time_now_utc() }}"

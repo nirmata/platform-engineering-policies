@@ -1,0 +1,27 @@
+# chainsaw-test.yaml - Main Chainsaw test configuration
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Configuration
+metadata:
+  name: configmap-cleanup-config
+spec:
+  timeouts:
+    apply: 30s
+    assert: 2m
+    cleanup: 30s
+    delete: 30s
+    error: 30s
+  cleanup:
+    skipDelete: false
+  discovery:
+    excludeTestRegex: ""
+    includeTestRegex: ""
+    #testFile: "chainsaw-test.yaml"
+    testFile: "chainsaw-test-configmap-cleanup.yaml"
+  execution:
+    parallel: 1
+    repeatCount: 1
+    forceTerminationGracePeriod: 5s
+  report:
+    format: JSON
+    name: "configmap-cleanup-test"
+

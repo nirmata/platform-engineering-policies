@@ -1,0 +1,444 @@
+---
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: configmap-cleanup-test
+spec:
+  description: |
+    Test the ConfigMap cleanup policy to ensure it correctly identifies
+    and cleans up unused ConfigMaps while preserving those in use.
+  timeouts:
+    apply: 30s
+    assert: 60s
+    cleanup: 30s
+  steps:
+  
+  # Step 1: Apply the cleanup policies
+  - try:
+    - apply:
+        file: ../policies/configmap-cleanup-policies.yaml
+    - assert:
+        file: policy-ready.yaml
+
+  # Step 2: Create test namespace and resources
+  - try:
+    - apply:
+        resource:
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: configmap-test
+    
+    # Create unused ConfigMap (should be cleaned up)
+    - apply:
+        resource:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: unused-configmap
+            namespace: configmap-test
+          data:
+            key1: value1
+            key2: value2
+    
+    # Create ConfigMap used by volume (should be preserved)
+    - apply:
+        resource:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: volume-configmap
+            namespace: configmap-test
+          data:
+            config.yaml: |
+              setting: value
+    
+    # Create ConfigMap used by env var (should be preserved)
+    - apply:
+        resource:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: env-configmap
+            namespace: configmap-test
+          data:
+            DATABASE_URL: postgresql://localhost:5432/mydb
+    
+    # Create ConfigMap used by envFrom (should be preserved)
+    - apply:
+        resource:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: envfrom-configmap
+            namespace: configmap-test
+          data:
+            API_KEY: secret-key
+            DEBUG: "true"
+    
+    # Create protected ConfigMap (should be preserved)
+    - apply:
+        resource:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: protected-configmap
+            namespace: configmap-test
+            annotations:
+              cleanup.kyverno.io/exclude: "true"
+          data:
+            protected: data
+
+  # Step 3: Create pods that use some ConfigMaps
+  - try:
+    # Pod using ConfigMap as volume
+    - apply:
+        resource:
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: pod-with-volume
+            namespace: configmap-test
+          spec:
+            containers:
+            - name: test-container
+              image: nginx:alpine
+              volumeMounts:
+              - name: config-volume
+                mountPath: /etc/config
+            volumes:
+            - name: config-volume
+              configMap:
+                name: volume-configmap
+    
+    # Pod using ConfigMap as env var
+    - apply:
+        resource:
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: pod-with-env
+            namespace: configmap-test
+          spec:
+            containers:
+            - name: test-container
+              image: nginx:alpine
+              env:
+              - name: DATABASE_URL
+                valueFrom:
+                  configMapKeyRef:
+                    name: env-configmap
+                    key: DATABASE_URL
+    
+    # Pod using ConfigMap as envFrom
+    - apply:
+        resource:
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: pod-with-envfrom
+            namespace: configmap-test
+          spec:
+            containers:
+            - name: test-container
+              image: nginx:alpine
+              envFrom:
+              - configMapRef:
+                  name: envfrom-configmap
+    
+    # Wait for pods to be ready
+    - assert:
+        resource:
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: pod-with-volume
+            namespace: configmap-test
+          status:
+            phase: Running
+    
+    - assert:
+        resource:
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: pod-with-env
+            namespace: configmap-test
+          status:
+            phase: Running
+    
+    - assert:
+        resource:
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: pod-with-envfrom
+            namespace: configmap-test
+          status:
+            phase: Running
+
+  # Step 4: Wait for background policies to process
+  - try:
+    - sleep:
+        duration: 30s
+
+  # Step 5: Verify audit reports were generated
+  - try:
+    # Check that unused ConfigMap report was created
+    - assert:
+        resource:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: unused-configmap-report-unused-configmap
+            namespace: configmap-test
+    
+    # Check that usage reports were created for all ConfigMaps
+    - assert:
+        resource:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: configmap-usage-volume-configmap
+            namespace: configmap-test
+    
+    - assert:
+        resource:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: configmap-usage-env-configmap
+            namespace: configmap-test
+    
+    - assert:
+        resource:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: configmap-usage-envfrom-configmap
+            namespace: configmap-test
+
+  # Step 6: Verify ConfigMaps are still present (cleanup policy is in audit mode)
+  - try:
+    - assert:
+        resource:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: unused-configmap
+            namespace: configmap-test
+    
+    - assert:
+        resource:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: volume-configmap
+            namespace: configmap-test
+    
+    - assert:
+        resource:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: env-configmap
+            namespace: configmap-test
+    
+    - assert:
+        resource:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: envfrom-configmap
+            namespace: configmap-test
+    
+    - assert:
+        resource:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: protected-configmap
+            namespace: configmap-test
+
+  # Step 7: Test actual cleanup (change policy to enforce mode)
+  - try:
+    - apply:
+        resource:
+          apiVersion: kyverno.io/v1
+          kind: ClusterPolicy
+          metadata:
+            name: cleanup-unused-configmaps
+          spec:
+            admission: false
+            background: true
+            validationFailureAction: enforce
+            schemaValidation: false
+            rules:
+            - name: cleanup-unused-configmaps
+              match:
+                any:
+                - resources:
+                    kinds:
+                    - ConfigMap
+              context:
+              - name: pods
+                apiCall:
+                  urlPath: "/api/v1/namespaces/{{ request.namespace }}/pods"
+                  jmesPath: "items[?status.phase != 'Succeeded' && status.phase != 'Failed']"
+              preconditions:
+                all:
+                - key: "{{ pods[?spec.volumes[?configMap.name == '{{ request.object.metadata.name }}']].metadata.name | length(@) }}"
+                  operator: Equals
+                  value: 0
+                - key: "{{ pods[?spec.containers[?env[?valueFrom.configMapKeyRef.name == '{{ request.object.metadata.name }}']].metadata.name || spec.initContainers[?env[?valueFrom.configMapKeyRef.name == '{{ request.object.metadata.name }}']].metadata.name].metadata.name | length(@) }}"
+                  operator: Equals
+                  value: 0
+                - key: "{{ pods[?spec.containers[?envFrom[?configMapRef.name == '{{ request.object.metadata.name }}']].metadata.name || spec.initContainers[?envFrom[?configMapRef.name == '{{ request.object.metadata.name }}']].metadata.name].metadata.name | length(@) }}"
+                  operator: Equals
+                  value: 0
+                - key: "{{ request.namespace }}"
+                  operator: AnyNotIn
+                  value: ["kube-system", "kube-public", "kube-node-lease", "kyverno"]
+                - key: "{{ request.object.metadata.annotations.\"cleanup.kyverno.io/exclude\" || 'false' }}"
+                  operator: NotEquals
+                  value: "true"
+              validate:
+                message: "ConfigMap {{ request.object.metadata.name }} is not used by any pods and will be deleted"
+                deny: {}
+    
+    # Wait for policy to be updated
+    - sleep:
+        duration: 10s
+
+  # Step 8: Verify cleanup behavior
+  - try:
+    # Unused ConfigMap should be blocked/cleaned up
+    - assert:
+        resource:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: unused-configmap
+            namespace: configmap-test
+        ($error != null): true
+    
+    # Used ConfigMaps should still exist
+    - assert:
+        resource:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: volume-configmap
+            namespace: configmap-test
+    
+    - assert:
+        resource:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: env-configmap
+            namespace: configmap-test
+    
+    - assert:
+        resource:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: envfrom-configmap
+            namespace: configmap-test
+    
+    # Protected ConfigMap should still exist
+    - assert:
+        resource:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: protected-configmap
+            namespace: configmap-test
+
+  # Step 9: Test edge cases
+  - try:
+    # Create a ConfigMap used by init container
+    - apply:
+        resource:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: init-configmap
+            namespace: configmap-test
+          data:
+            init-script.sh: |
+              #!/bin/bash
+              echo "Initializing..."
+    
+    # Pod with init container using ConfigMap
+    - apply:
+        resource:
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: pod-with-init
+            namespace: configmap-test
+          spec:
+            initContainers:
+            - name: init-container
+              image: busybox
+              command: ['sh', '-c', 'echo $INIT_VALUE']
+              env:
+              - name: INIT_VALUE
+                valueFrom:
+                  configMapKeyRef:
+                    name: init-configmap
+                    key: init-script.sh
+            containers:
+            - name: main-container
+              image: nginx:alpine
+    
+    # Wait for pod to be ready
+    - sleep:
+        duration: 15s
+    
+    # Verify init ConfigMap is preserved
+    - assert:
+        resource:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: init-configmap
+            namespace: configmap-test
+
+  # Cleanup
+  - try:
+    - delete:
+        ref:
+          apiVersion: v1
+          kind: Namespace
+          name: configmap-test
+    - delete:
+        ref:
+          apiVersion: kyverno.io/v1
+          kind: ClusterPolicy
+          name: cleanup-unused-configmaps
+    - delete:
+        ref:
+          apiVersion: kyverno.io/v1
+          kind: ClusterPolicy
+          name: audit-unused-configmaps
+    - delete:
+        ref:
+          apiVersion: kyverno.io/v1
+          kind: ClusterPolicy
+          name: generate-configmap-usage-report
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: policy-ready
+data:
+  check: |
+    #!/bin/bash
+    # Check if all policies are ready
+    kubectl get clusterpolicy cleanup-unused-configmaps -o jsonpath='{.status.ready}' | grep -q true &&
+    kubectl get clusterpolicy audit-unused-configmaps -o jsonpath='{.status.ready}' | grep -q true &&
+    kubectl get clusterpolicy generate-configmap-usage-report -o jsonpath='{.status.ready}' | grep -q true
