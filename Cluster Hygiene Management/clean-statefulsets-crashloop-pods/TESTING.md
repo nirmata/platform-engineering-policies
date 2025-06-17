@@ -148,17 +148,6 @@ kubectl describe statefulset crashloop-test-statefulset
 kubectl get pvc
 ```
 
-## 📊 Expected Timeline
-
-| Time | Stage | Action | Observable |
-|------|-------|--------|------------|
-| 0min | Deploy | StatefulSet created | Pods starting |
-| 1-2min | CrashLoop | Pods enter CrashLoopBackOff | Pod status shows crashes |
-| 3min | Mark | Policy 1 marks StatefulSet | Annotations added |
-| 3min | Alert | Policy 2 generates audit alert | PolicyReport created |
-| 8min | Scale | Policy 4 scales to 0 replicas | Replicas = 0 |
-| 8.5min | Delete | Policy 5 deletes StatefulSet | Resource removed |
-
 ## 🧹 Cleanup
 
 After testing, clean up any remaining resources:
