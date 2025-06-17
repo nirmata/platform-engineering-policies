@@ -43,10 +43,10 @@ kubectl apply -f configmap-cleanup-policies.yaml
 
 ``` yaml
 # Make script executable
-chmod +x sample-test-script.sh
+chmod +x clean-configmap-script.sh
 
 # Run the complete test suite
-./sample-test-script.sh
+./clean-configmap-script.sh
 ```
 ### 2. Monitor Reports
 
