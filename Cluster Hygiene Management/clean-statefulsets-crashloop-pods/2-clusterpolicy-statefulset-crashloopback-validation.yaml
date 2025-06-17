@@ -1,0 +1,25 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: marked-statefulset-scale-down-validation
+  annotations:
+    policies.kyverno.io/title: Marked StatefulSet for Scaled Down
+    policies.kyverno.io/category: Platform Engineering
+    policies.kyverno.io/description: >-
+      This is an Audit policy that flags any StatefulSets that have a label 'sts-cleanup.resource=marked-for-action' indicating the users the StatefulSet will be scaled down to 0 replicas.
+spec:
+  validationFailureAction: Audit
+  rules:
+  - name: marked-statefulset-scale-down-validation-rule
+    match:
+      any:
+      - resources:
+          kinds:
+          - StatefulSet
+    validate:
+      message: "The StatefulSet {{request.object.metadata.name}} in {{request.namespace}} namespace is marked for scale down as it has `sts-cleanup.resource` annotation"
+      deny:
+        conditions:
+          - key: "{{ request.object.metadata.annotations.\"sts-cleanup.resource\" || '' }}"
+            operator: Equals
+            value: "marked-for-action" 

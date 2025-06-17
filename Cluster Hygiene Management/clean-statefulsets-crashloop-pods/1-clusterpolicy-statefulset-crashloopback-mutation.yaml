@@ -1,0 +1,67 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: mark-statefulset-scale-down    
+spec:
+  background: true
+  mutateExistingOnPolicyUpdate: true
+  rules:
+  - name: mark-statefulset-scale-down-rule
+    match:
+      any:
+      - resources:
+          kinds:
+          - StatefulSet
+    context:
+    - name: desiredSTSReplicas
+      variable:
+        jmesPath: "request.object.spec.replicas"
+    - name: stsMatchLabels
+      variable:
+        jmesPath: "request.object.spec.selector.matchLabels"
+    - name: stsLabelSelector
+      variable:
+        jmesPath: "join(',', [join('=', [keys(stsMatchLabels)[0], values(stsMatchLabels)[0]])]) || join(',', [join('=', [keys(stsMatchLabels)[0], values(stsMatchLabels)[0]]), join('=', [keys(stsMatchLabels)[1], values(stsMatchLabels)[1]])]) || join(',', [join('=', [keys(stsMatchLabels)[0], values(stsMatchLabels)[0]]), join('=', [keys(stsMatchLabels)[1], values(stsMatchLabels)[1]]), join('=', [keys(stsMatchLabels)[2], values(stsMatchLabels)[2]])]) || join(',', [join('=', [keys(stsMatchLabels)[0], values(stsMatchLabels)[0]]), join('=', [keys(stsMatchLabels)[1], values(stsMatchLabels)[1]]), join('=', [keys(stsMatchLabels)[2], values(stsMatchLabels)[2]]), join('=', [keys(stsMatchLabels)[3], values(stsMatchLabels)[3]])]) || join(',', [join('=', [keys(stsMatchLabels)[0], values(stsMatchLabels)[0]]), join('=', [keys(stsMatchLabels)[1], values(stsMatchLabels)[1]]), join('=', [keys(stsMatchLabels)[2], values(stsMatchLabels)[2]]), join('=', [keys(stsMatchLabels)[3], values(stsMatchLabels)[3]]), join('=', [keys(stsMatchLabels)[4], values(stsMatchLabels)[4]])]) "
+    - name: stsCrashedReplicas
+      apiCall:
+        urlPath: "/api/v1/namespaces/{{request.namespace}}/pods/?labelSelector={{stsLabelSelector}}"
+        jmesPath: "items[?status.containerStatuses[?state.waiting.reason == 'CrashLoopBackOff']] | length(@)"
+    - name: stsRunningReplicas
+      apiCall:
+        urlPath: "/api/v1/namespaces/{{request.namespace}}/pods/?labelSelector={{stsLabelSelector}}"
+        jmesPath: "items[?status.containerStatuses[?ready == `true` && state.running]] | length(@)"
+    - name: stsCrashedInitContainersReplicas
+      apiCall:
+        urlPath: "/api/v1/namespaces/{{request.namespace}}/pods/?labelSelector={{stsLabelSelector}}"
+        jmesPath: "items[?status.initContainerStatuses[?state.waiting.reason == 'CrashLoopBackOff']] | length(@)"
+    - name: stsLastUpdateTimestamp
+      variable:
+        jmesPath: "request.object.metadata.managedFields[-1].time"
+    preconditions:
+      any:
+      - key: "{{ stsCrashedReplicas }}"
+        operator: Equals
+        value: "{{ desiredSTSReplicas }}"
+      - key: "{{ stsCrashedInitContainersReplicas }}"
+        operator: Equals
+        value: "{{ desiredSTSReplicas }}"
+      all:
+      - key: "{{ time_since('', '{{stsLastUpdateTimestamp}}', '') }}"
+        operator: GreaterThan
+        value: 1m # Set to >24h for production
+      - key: "{{stsRunningReplicas}}"
+        operator: Equals
+        value: 0
+      - key: "{{request.object.metadata.annotations.\"sts-cleanup.resource\" || ''}}"
+        operator: Equals
+        value: ''
+    mutate:
+      targets:
+        - apiVersion: apps/v1
+          kind: StatefulSet
+          namespace: "{{request.namespace}}"
+      patchStrategicMerge:
+        metadata:
+          annotations:
+            sts-cleanup.resource: "marked-for-action"
+            sts-timestamp: "{{ time_now_utc() }}" 

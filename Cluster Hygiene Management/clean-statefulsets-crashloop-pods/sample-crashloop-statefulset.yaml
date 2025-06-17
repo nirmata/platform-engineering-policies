@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: crashloop-test-statefulset
+  namespace: default
+  labels:
+    app: crashloop-test
+spec:
+  serviceName: crashloop-test-service
+  replicas: 2
+  selector:
+    matchLabels:
+      app: crashloop-test
+  template:
+    metadata:
+      labels:
+        app: crashloop-test
+    spec:
+      containers:
+      - name: crashloop-container
+        image: busybox:1.35
+        command: 
+        - "/bin/sh"
+        - "-c"
+        - "echo 'Starting crashloop container...'; sleep 5; echo 'Exiting with error'; exit 1"
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi
+      restartPolicy: Always
+  volumeClaimTemplates:
+  - metadata:
+      name: test-storage
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: crashloop-test-service
+  namespace: default
+spec:
+  clusterIP: None
+  selector:
+    app: crashloop-test
+  ports:
+  - port: 80
+    targetPort: 8080 

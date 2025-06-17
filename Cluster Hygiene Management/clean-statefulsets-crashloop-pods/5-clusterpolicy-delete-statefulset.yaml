@@ -1,0 +1,31 @@
+apiVersion: kyverno.io/v2beta1
+kind: ClusterCleanupPolicy
+metadata:
+  name: cleanup-stale-statefulsets
+  annotations:
+    policies.kyverno.io/title: Cleanup stale StatefulSets
+    policies.kyverno.io/category: Other
+    policies.kyverno.io/severity: medium
+    policies.kyverno.io/subject: StatefulSet
+    policies.kyverno.io/description: >-
+      This policy performs the final cleanup stage of the automated StatefulSet resource optimization system by permanently removing StatefulSets that have been scaled down due to persistent CrashLoopBackOff issues. It targets StatefulSets that contain a 'sts-scaledowntimestamp' annotation, indicating they have already been scaled to zero replicas by the previous policy in the chain. The policy completely removes these failed StatefulSets from the cluster to free up resources, and prevent accumulation of unused objects. This is the final stage in a 5-policy progressive cleanup system that includes detection, auditing, recovery handling, scaling down, and deletion.
+spec:
+  match:
+    any:
+    - resources:
+        kinds:
+          - StatefulSet
+  exclude:
+    any:
+    - resources:
+        namespaces:
+          - kube-system
+  conditions:
+    all:
+    - key: "{{ target.spec.replicas }}"
+      operator: Equals
+      value: 0
+    - key: "{{ time_diff('{{target.metadata.annotations.\"sts-scaledowntimestamp\"}}','{{ time_now_utc() }}') }}"
+      operator: GreaterThan
+      value: "0h0m30s"
+  schedule: "*/1 * * * *" 

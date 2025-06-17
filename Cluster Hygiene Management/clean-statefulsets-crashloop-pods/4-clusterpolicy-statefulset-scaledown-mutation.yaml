@@ -1,0 +1,35 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: scale-down-statefulset 
+spec:
+  mutateExistingOnPolicyUpdate: true
+  background: false
+  rules:
+  - name: scale-down-statefulset-rule 
+    match:
+      any:
+      - resources:
+          annotations:
+            sts-cleanup.resource: "marked-for-action"
+          kinds:
+          - StatefulSet
+    mutate:
+      targets:
+        - apiVersion: apps/v1
+          kind: StatefulSet
+          namespace: "{{request.namespace}}"
+          preconditions:
+            all:
+            - key: "{{ time_since('', '{{ target.metadata.annotations.\"sts-timestamp\" }}', '') }}"
+              operator: GreaterThan
+              value: "5m"
+            - key: "{{ target.metadata.annotations.\"sts-scaledowntimestamp\" || ''}}"
+              operator: Equals
+              value: ''
+      patchStrategicMerge:
+        metadata:
+          annotations:
+            sts-scaledowntimestamp: "{{ time_now_utc() }}"
+        spec:
+          replicas: 0 

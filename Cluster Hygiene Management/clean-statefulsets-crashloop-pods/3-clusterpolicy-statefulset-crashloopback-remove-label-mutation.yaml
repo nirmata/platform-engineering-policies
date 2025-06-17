@@ -1,0 +1,45 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: remove-statefulset-scale-down-label 
+spec:
+  background: true
+  mutateExistingOnPolicyUpdate: true
+  rules:
+  - name: remove-statefulset-scale-down-label-rule 
+    match:
+      any:
+      - resources:
+          kinds:
+          - StatefulSet
+          annotations:
+            sts-cleanup.resource: "marked-for-action"
+    context:
+    - name: desiredSTSReplicasV2
+      variable:
+        jmesPath: "request.object.spec.replicas"
+    - name: stsMatchLabelsV2
+      variable:
+        jmesPath: "request.object.spec.selector.matchLabels"
+    - name: stsLabelSelectorV2
+      variable:
+        jmesPath: "join(',', [join('=', [keys(stsMatchLabelsV2)[0], values(stsMatchLabelsV2)[0]])]) || join(',', [join('=', [keys(stsMatchLabelsV2)[0], values(stsMatchLabelsV2)[0]]), join('=', [keys(stsMatchLabelsV2)[1], values(stsMatchLabelsV2)[1]])]) || join(',', [join('=', [keys(stsMatchLabelsV2)[0], values(stsMatchLabelsV2)[0]]), join('=', [keys(stsMatchLabelsV2)[1], values(stsMatchLabelsV2)[1]]), join('=', [keys(stsMatchLabelsV2)[2], values(stsMatchLabelsV2)[2]])]) || join(',', [join('=', [keys(stsMatchLabelsV2)[0], values(stsMatchLabelsV2)[0]]), join('=', [keys(stsMatchLabelsV2)[1], values(stsMatchLabelsV2)[1]]), join('=', [keys(stsMatchLabelsV2)[2], values(stsMatchLabelsV2)[2]]), join('=', [keys(stsMatchLabelsV2)[3], values(stsMatchLabelsV2)[3]])]) || join(',', [join('=', [keys(stsMatchLabelsV2)[0], values(stsMatchLabelsV2)[0]]), join('=', [keys(stsMatchLabelsV2)[1], values(stsMatchLabelsV2)[1]]), join('=', [keys(stsMatchLabelsV2)[2], values(stsMatchLabelsV2)[2]]), join('=', [keys(stsMatchLabelsV2)[3], values(stsMatchLabelsV2)[3]]), join('=', [keys(stsMatchLabelsV2)[4], values(stsMatchLabelsV2)[4]])]) "
+    - name: stsRunningReplicasV2
+      apiCall:
+        urlPath: "/api/v1/namespaces/{{request.namespace}}/pods/?labelSelector={{stsLabelSelectorV2}}"
+        jmesPath: "items[?status.containerStatuses[?ready == `true` && state.running]] | length(@)"
+    preconditions:
+      all:
+      - key: "{{stsRunningReplicasV2}}"
+        operator: GreaterThan
+        value: 0
+    mutate:
+      targets:
+        - apiVersion: apps/v1
+          kind: StatefulSet
+          namespace: "{{request.namespace}}"
+      patchesJson6902: |-
+        - path: "/metadata/annotations/sts-cleanup.resource"
+          op: remove
+        - path: "/metadata/annotations/sts-timestamp"
+          op: remove 
