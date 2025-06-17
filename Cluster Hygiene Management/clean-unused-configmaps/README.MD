@@ -35,13 +35,13 @@ Test Coverage
 
 ### 1. Deploy the Policies
 
-```
+``` yaml
 kubectl apply -f configmap-cleanup-policies.yaml
 ```
 
 ### 2. Run the tests
 
-```
+``` yaml
 # Make script executable
 chmod +x sample-test-script.sh
 
@@ -50,7 +50,7 @@ chmod +x sample-test-script.sh
 ```
 ### 2. Monitor Reports
 
-```
+``` yaml
 # Check unused ConfigMap reports
 kubectl get configmaps -A | grep "unused-configmap-report"
 
