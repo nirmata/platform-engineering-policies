@@ -27,22 +27,22 @@ spec:
     - name: matchLabelsv2
       apiCall:
         urlPath: "/apis/apps/v1/namespaces/{{request.namespace}}/deployments/{{deploymentnamev2}}"
-        jmesPath: "spec.selector.matchLabelsv2"
+        jmesPath: "spec.selector.matchLabels"
     - name: labelSelectorv2
       variable:
 #        jmesPath: "join(',', [join('=', [keys(matchLabelsv2)[0], values(matchLabelsv2)[0]]), join('=', [keys(matchLabelsv2)[1], values(matchLabelsv2)[1]])])"
         jmesPath: "join(',', [join('=', [keys(matchLabelsv2)[0], values(matchLabelsv2)[0]])]) || join(',', [join('=', [keys(matchLabelsv2)[0], values(matchLabelsv2)[0]]), join('=', [keys(matchLabelsv2)[1], values(matchLabelsv2)[1]])]) || join(',', [join('=', [keys(matchLabelsv2)[0], values(matchLabelsv2)[0]]), join('=', [keys(matchLabelsv2)[1], values(matchLabelsv2)[1]]), join('=', [keys(matchLabelsv2)[2], values(matchLabelsv2)[2]])]) || join(',', [join('=', [keys(matchLabelsv2)[0], values(matchLabelsv2)[0]]), join('=', [keys(matchLabelsv2)[1], values(matchLabelsv2)[1]]), join('=', [keys(matchLabelsv2)[2], values(matchLabelsv2)[2]]), join('=', [keys(matchLabelsv2)[3], values(matchLabelsv2)[3]])]) || join(',', [join('=', [keys(matchLabelsv2)[0], values(matchLabelsv2)[0]]), join('=', [keys(matchLabelsv2)[1], values(matchLabelsv2)[1]]), join('=', [keys(matchLabelsv2)[2], values(matchLabelsv2)[2]]), join('=', [keys(matchLabelsv2)[3], values(matchLabelsv2)[3]]), join('=', [keys(matchLabelsv2)[4], values(matchLabelsv2)[4]])]) "
     - name: crashedReplicasv2
       apiCall:
-        urlPath: "/api/v1/namespaces/{{request.namespace}}/pods/?labelSelectorv2={{labelSelectorv2}}"
+        urlPath: "/api/v1/namespaces/{{request.namespace}}/pods/?labelSelector={{labelSelectorv2}}"
         jmesPath: "items[?status.containerStatuses[?state.waiting.reason == 'CrashLoopBackOff']] | length(@)"
     - name: runningReplicasv2
       apiCall:
-        urlPath: "/api/v1/namespaces/{{request.namespace}}/pods/?labelSelectorv2={{labelSelectorv2}}"
+        urlPath: "/api/v1/namespaces/{{request.namespace}}/pods/?labelSelector={{labelSelectorv2}}"
         jmesPath: "items[?status.containerStatuses[?ready == `true` && state.running]] | length(@)"
     - name: crashedInitContainersReplicasv2
       apiCall:
-        urlPath: "/api/v1/namespaces/{{request.namespace}}/pods/?labelSelectorv2={{labelSelectorv2}}"
+        urlPath: "/api/v1/namespaces/{{request.namespace}}/pods/?labelSelector={{labelSelectorv2}}"
         jmesPath: "items[?status.initContainerStatuses[?state.waiting.reason == 'CrashLoopBackOff']] | length(@)"
     - name: latestreplicasetnamev2
       apiCall:
