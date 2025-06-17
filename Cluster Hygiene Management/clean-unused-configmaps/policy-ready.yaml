@@ -1,1 +1,25 @@
+# policy-ready.yaml - Helper for checking policy readiness
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: cleanup-unused-configmaps
+status:
+  ready: true
+
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: audit-unused-configmaps
+status:
+  ready: true
+
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: generate-configmap-usage-report
+status:
+  ready: true
 
