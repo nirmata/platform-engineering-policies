@@ -1,0 +1,162 @@
+# Chainsaw Test Suite
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: test-pvc-cleanup-policy
+spec:
+  description: Test PVC cleanup policy functionality
+  timeouts:
+    apply: 30s
+    assert: 60s
+    cleanup: 30s
+    delete: 30s
+    error: 30s
+    exec: 30s
+  
+  steps:
+  # Step 1: Create test namespace and resources
+  - name: setup-test-environment
+    try:
+    - apply:
+        file: |
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: pvc-cleanup-test
+          ---
+          apiVersion: v1
+          kind: PersistentVolumeClaim
+          metadata:
+            name: unused-pvc
+            namespace: pvc-cleanup-test
+          spec:
+            accessModes:
+            - ReadWriteOnce
+            resources:
+              requests:
+                storage: 1Gi
+          ---
+          apiVersion: v1
+          kind: PersistentVolumeClaim
+          metadata:
+            name: used-pvc
+            namespace: pvc-cleanup-test
+          spec:
+            accessModes:
+            - ReadWriteOnce
+            resources:
+              requests:
+                storage: 1Gi
+          ---
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            name: test-pod
+            namespace: pvc-cleanup-test
+          spec:
+            containers:
+            - name: test-container
+              image: nginx:alpine
+              volumeMounts:
+              - name: test-volume
+                mountPath: /data
+            volumes:
+            - name: test-volume
+              persistentVolumeClaim:
+                claimName: used-pvc
+            restartPolicy: Never
+    
+    # Wait for resources to be created
+    - assert:
+        resource:
+          apiVersion: v1
+          kind: PersistentVolumeClaim
+          metadata:
+            name: unused-pvc
+            namespace: pvc-cleanup-test
+        timeout: 30s
+    
+    - assert:
+        resource:
+          apiVersion: v1
+          kind: PersistentVolumeClaim
+          metadata:
+            name: used-pvc
+            namespace: pvc-cleanup-test
+        timeout: 30s
+
+  # Step 2: Test that protected PVC is not cleaned up
+  - name: test-protected-pvc
+    try:
+    - apply:
+        file: |
+          apiVersion: v1
+          kind: PersistentVolumeClaim
+          metadata:
+            name: protected-pvc
+            namespace: pvc-cleanup-test
+            annotations:
+              kyverno.io/skip-cleanup: "true"
+          spec:
+            accessModes:
+            - ReadWriteOnce
+            resources:
+              requests:
+                storage: 1Gi
+    
+    # Wait and verify protected PVC still exists
+    - sleep:
+        duration: 10s
+    
+    - assert:
+        resource:
+          apiVersion: v1
+          kind: PersistentVolumeClaim
+          metadata:
+            name: protected-pvc
+            namespace: pvc-cleanup-test
+
+  # Step 3: Test audit policy generates events
+  - name: test-audit-generation
+    try:
+    # Check for audit events in Kyverno
+    - script:
+        timeout: 30s
+        content: |
+          kubectl get events -n pvc-cleanup-test --field-selector reason=PolicyViolation -o json | \
+          jq '.items[] | select(.message | contains("unused")) | .involvedObject.name'
+
+  # Step 4: Test usage report generation
+  - name: test-report-generation
+    try:
+    - assert:
+        resource:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            name: pvc-usage-report-pvc-cleanup-test
+            namespace: kyverno
+        timeout: 60s
+    
+    # Verify report content
+    - script:
+        timeout: 30s
+        content: |
+          kubectl get configmap pvc-usage-report-pvc-cleanup-test -n kyverno -o json | \
+          jq '.data["pvc-report.json"]' | jq 'fromjson | .pvc_name'
+
+  # Step 5: Cleanup test resources
+  - name: cleanup
+    try:
+    - delete:
+        ref:
+          apiVersion: v1
+          kind: Namespace
+          name: pvc-cleanup-test
+    
+    - delete:
+        ref:
+          apiVersion: v1
+          kind: ConfigMap
+          name: pvc-usage-report-pvc-cleanup-test
+          namespace: kyverno

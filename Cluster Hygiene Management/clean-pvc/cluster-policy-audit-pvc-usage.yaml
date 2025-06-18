@@ -1,0 +1,52 @@
+# ClusterPolicy for audit generation - tracks PVC usage
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: audit-pvc-usage
+  annotations:
+    policies.kyverno.io/title: Audit PVC Usage
+    policies.kyverno.io/category: Storage
+    policies.kyverno.io/severity: low
+    policies.kyverno.io/subject: PersistentVolumeClaim
+    policies.kyverno.io/description: >-
+      This policy generates audit events for PVC usage patterns to help
+      identify unused PVCs before cleanup policies remove them.
+spec:
+  validationFailureAction: audit
+  background: true
+  
+  rules:
+  - name: audit-unused-pvcs
+    match:
+      any:
+      - resources:
+          kinds:
+          - PersistentVolumeClaim
+          operations:
+          - CREATE
+          - UPDATE
+    
+    context:
+    - name: pod_count_using_pvc
+      apiCall:
+        urlPath: "/api/v1/namespaces/{{ request.object.metadata.namespace }}/pods"
+        jmesPath: "items[?spec.volumes[?persistentVolumeClaim.claimName == '{{ request.object.metadata.name }}']] | length(@)"
+    
+    - name: pvc_age_hours
+      variable:
+        value: "{{ time_since('', request.object.metadata.creationTimestamp, '') }}"
+    
+    validate:
+      message: >-
+        PVC {{ request.object.metadata.name }} in namespace {{ request.object.metadata.namespace }} 
+        has been unused for {{ pvc_age_hours }}. Pod count using this PVC: {{ pod_count_using_pvc }}.
+        Consider reviewing if this PVC is still needed.
+      deny:
+        conditions:
+          all:
+          - key: "{{ pod_count_using_pvc }}"
+            operator: Equals
+            value: 0
+          - key: "{{ time_since('', request.object.metadata.creationTimestamp, '') }}"
+            operator: GreaterThan
+            value: "24h"

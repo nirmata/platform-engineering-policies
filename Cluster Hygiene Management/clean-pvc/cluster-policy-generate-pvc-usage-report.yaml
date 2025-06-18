@@ -1,0 +1,59 @@
+---
+# Generate Policy to create ConfigMap with PVC usage report
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy  
+metadata:
+  name: generate-pvc-usage-report
+  annotations:
+    policies.kyverno.io/title: Generate PVC Usage Report
+    policies.kyverno.io/category: Storage
+    policies.kyverno.io/severity: low
+    policies.kyverno.io/description: >-
+      Generates a ConfigMap with detailed PVC usage information for monitoring
+      and reporting purposes.
+spec:
+  generateExisting: true
+  background: true
+  
+  rules:
+  - name: generate-pvc-report
+    match:
+      any:
+      - resources:
+          kinds:
+          - PersistentVolumeClaim
+    
+    context:
+    - name: pods_using_pvc
+      apiCall:
+        urlPath: "/api/v1/namespaces/{{ request.object.metadata.namespace }}/pods"
+        jmesPath: "items[?spec.volumes[?persistentVolumeClaim.claimName == '{{ request.object.metadata.name }}']]"
+    
+    - name: pvc_size
+      variable:
+        value: "{{ request.object.spec.resources.requests.storage }}"
+        
+    - name: pvc_storage_class
+      variable:
+        value: "{{ request.object.spec.storageClassName || 'default' }}"
+    
+    generate:
+      synchronize: true
+      apiVersion: v1
+      kind: ConfigMap
+      name: "pvc-usage-report-{{ request.object.metadata.namespace }}"
+      namespace: kyverno
+      data:
+        pvc-report.json: |
+          {
+            "pvc_name": "{{ request.object.metadata.name }}",
+            "namespace": "{{ request.object.metadata.namespace }}",
+            "size": "{{ pvc_size }}",
+            "storage_class": "{{ pvc_storage_class }}",
+            "creation_time": "{{ request.object.metadata.creationTimestamp }}",
+            "pods_using": {{ pods_using_pvc | length(@) }},
+            "pod_names": {{ pods_using_pvc | [].metadata.name }},
+            "status": "{{ request.object.status.phase || 'Unknown' }}",
+            "access_modes": {{ request.object.spec.accessModes }},
+            "volume_name": "{{ request.object.spec.volumeName || '' }}"
+          }

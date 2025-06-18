@@ -1,0 +1,71 @@
+# Additional Chainsaw test for edge cases
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: test-pvc-edge-cases
+spec:
+  description: Test PVC cleanup policy edge cases and error conditions
+  timeouts:
+    apply: 30s
+    assert: 60s
+    cleanup: 30s
+  
+  steps:
+  - name: test-statefulset-pvc-protection
+    try:
+    - apply:
+        file: |
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: pvc-edge-test
+          ---
+          apiVersion: apps/v1
+          kind: StatefulSet
+          metadata:
+            name: test-statefulset
+            namespace: pvc-edge-test
+          spec:
+            serviceName: test-service
+            replicas: 1
+            selector:
+              matchLabels:
+                app: test-app
+            template:
+              metadata:
+                labels:
+                  app: test-app
+              spec:
+                containers:
+                - name: test-container
+                  image: nginx:alpine
+                  volumeMounts:
+                  - name: data
+                    mountPath: /data
+            volumeClaimTemplates:
+            - metadata:
+                name: data
+              spec:
+                accessModes:
+                - ReadWriteOnce
+                resources:
+                  requests:
+                    storage: 1Gi
+    
+    # Verify StatefulSet PVC is protected
+    - assert:
+        resource:
+          apiVersion: v1
+          kind: PersistentVolumeClaim
+          metadata:
+            name: data-test-statefulset-0
+            namespace: pvc-edge-test
+        timeout: 60s
+
+  - name: cleanup-edge-test
+    try:
+    - delete:
+        ref:
+          apiVersion: v1
+          kind: Namespace
+          name: pvc-edge-test

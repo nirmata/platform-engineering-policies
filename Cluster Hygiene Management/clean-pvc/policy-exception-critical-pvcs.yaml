@@ -1,0 +1,29 @@
+# PolicyException for critical PVCs that should never be cleaned up
+apiVersion: kyverno.io/v2beta1
+kind: PolicyException
+metadata:
+  name: critical-pvc-exception
+  namespace: kyverno
+spec:
+  exceptions:
+  - policyName: cleanup-unused-pvcs
+    ruleNames:
+    - cleanup-unused-pvcs
+  match:
+  - any:
+    - resources:
+        kinds:
+        - PersistentVolumeClaim
+        names:
+        - "*-database-*"
+        - "*-backup-*"
+        - "*-log-*"
+        namespaces:
+        - production
+        - staging
+    - resources:
+        kinds:
+        - PersistentVolumeClaim
+        selector:
+          matchLabels:
+            "kyverno.io/protected": "true"
