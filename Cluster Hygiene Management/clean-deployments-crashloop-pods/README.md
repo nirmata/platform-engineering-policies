@@ -28,6 +28,8 @@ flowchart LR
     style I fill:#ff9800
     style J fill:#f44336
     style K fill:#4caf50
+    
+    classDef default font-size:24px,padding:15px,stroke-width:3px
 ```
 
 ## Overview
