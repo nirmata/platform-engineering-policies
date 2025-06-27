@@ -1,0 +1,56 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: pv-generate-cleanup-report
+  annotations:
+    policies.kyverno.io/title: "Generate PV Cleanup Reports"
+    policies.kyverno.io/category: "Generate"
+    policies.kyverno.io/subject: "PersistentVolume,ConfigMap"
+    policies.kyverno.io/description: >-
+      This policy generates ConfigMaps containing reports of unused PersistentVolumes
+      for monitoring and alerting purposes.
+spec:
+  validationFailureAction: audit
+  background: true
+  rules:
+  - name: generate-pv-cleanup-report
+    match:
+      any:
+      - resources:
+          kinds:
+          - PersistentVolume
+    context:
+    - name: unused_pvs
+      apiCall:
+        urlPath: "/api/v1/persistentvolumes"
+        jmesPath: "items[?status.phase == 'Available' || status.phase == 'Released']"
+    - name: total_unused_storage
+      variable:
+        value: "{{ unused_pvs | [?status.phase == 'Available' || status.phase == 'Released'] | [].spec.capacity.storage | join(' + ') }}"
+    preconditions:
+      all:
+      - key: "{{ unused_pvs | length(@) }}"
+        operator: GreaterThan
+        value: 0
+    generate:
+      apiVersion: v1
+      kind: ConfigMap
+      name: pv-cleanup-report-{{ time_now_utc() | truncate(@, '10') | replace(@, '-', '') }}
+      namespace: kyverno
+      synchronize: false
+      data:
+        metadata:
+          labels:
+            app.kubernetes.io/managed-by: kyverno
+            kyverno.io/policy: pv-generate-cleanup-report
+            kyverno.io/report-type: pv-cleanup
+        data:
+          report-date: "{{ time_now_utc() }}"
+          unused-pv-count: "{{ unused_pvs | length(@) }}"
+          unused-pvs: "{{ unused_pvs | [].metadata.name | join(',') }}"
+          cleanup-recommendations: |
+            The following PersistentVolumes are unused and can be cleaned up:
+            {{ unused_pvs | [].metadata.name | join('\n- ') | prepend('- ') }}
+            
+            Total unused PVs: {{ unused_pvs | length(@) }}
+            Consider reviewing reclaim policies and cleaning up unused volumes.

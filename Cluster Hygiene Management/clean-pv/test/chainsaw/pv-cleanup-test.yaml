@@ -1,0 +1,94 @@
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: pv-cleanup-policy-test
+spec:
+  description: Test PV cleanup policy functionality
+  timeouts:
+    apply: 30s
+    assert: 45s
+    cleanup: 30s
+  steps:
+  - name: create-test-resources
+    description: Create test PVs and pods
+    try:
+    - apply:
+        file: test-resources/unused-pv.yaml
+    - apply:
+        file: test-resources/used-pv.yaml
+    - apply:
+        file: test-resources/test-pod.yaml
+    - sleep:
+        duration: 10s
+  
+  - name: verify-unused-pv-cleanup
+    description: Verify unused PV is marked for cleanup
+    try:
+    - assert:
+        resource:
+          apiVersion: v1
+          kind: PersistentVolume
+          metadata:
+            name: unused-test-pv
+          status:
+            phase: Available
+    - assert:
+        resource:
+          apiVersion: v1
+          kind: Event
+          metadata:
+            namespace: default
+          involvedObject:
+            kind: PersistentVolume
+            name: unused-test-pv
+          reason: PolicyViolation
+  
+  - name: verify-used-pv-preserved
+    description: Verify used PV is not cleaned up
+    try:
+    - assert:
+        resource:
+          apiVersion: v1
+          kind: PersistentVolume
+          metadata:
+            name: used-test-pv
+          status:
+            phase: Bound
+  
+  - name: verify-audit-report
+    description: Verify audit report generation
+    try:
+    - assert:
+        resource:
+          apiVersion: v1
+          kind: ConfigMap
+          metadata:
+            namespace: kyverno
+            labels:
+              kyverno.io/report-type: pv-cleanup
+  
+  - name: cleanup-test-resources
+    description: Clean up test resources
+    try:
+    - delete:
+        ref:
+          apiVersion: v1
+          kind: Pod
+          name: test-pod
+          namespace: default
+    - delete:
+        ref:
+          apiVersion: v1
+          kind: PersistentVolumeClaim
+          name: test-pvc
+          namespace: default
+    - delete:
+        ref:
+          apiVersion: v1
+          kind: PersistentVolume
+          name: used-test-pv
+    - delete:
+        ref:
+          apiVersion: v1
+          kind: PersistentVolume
+          name: unused-test-pv

@@ -1,0 +1,47 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: pv-audit-unused-persistent-volumes
+  annotations:
+    policies.kyverno.io/title: "Audit Unused Persistent Volumes"
+    policies.kyverno.io/category: "Audit"
+    policies.kyverno.io/subject: "PersistentVolume"
+    policies.kyverno.io/description: >-
+      This policy audits and reports on PersistentVolumes that are not bound to any
+      PersistentVolumeClaim. It generates reports for monitoring unused storage resources.
+spec:
+  validationFailureAction: audit
+  background: true
+  rules:
+  - name: audit-unused-persistent-volumes
+    match:
+      any:
+      - resources:
+          kinds:
+          - PersistentVolume
+    context:
+    - name: bound_pvcs
+      apiCall:
+        urlPath: "/api/v1/persistentvolumeclaims"
+        jmesPath: "items[?spec.volumeName == '{{ request.object.metadata.name }}']"
+    - name: pv_size
+      variable:
+        value: "{{ request.object.spec.capacity.storage }}"
+    - name: pv_age_days
+      variable:
+        value: "{{ time_since('', '{{ request.object.metadata.creationTimestamp }}', 'd') }}"
+    preconditions:
+      all:
+      - key: "{{ request.object.status.phase || 'Available' }}"
+        operator: In
+        value: ["Available", "Released"]
+      - key: "{{ bound_pvcs | length(@) }}"
+        operator: Equals
+        value: 0
+    validate:
+      message: >-
+        AUDIT: PersistentVolume '{{ request.object.metadata.name }}' is unused.
+        Size: {{ pv_size }}, Age: {{ pv_age_days }} days, 
+        Phase: {{ request.object.status.phase }},
+        Reclaim Policy: {{ request.object.spec.persistentVolumeReclaimPolicy }}
+      deny: {}

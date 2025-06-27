@@ -1,0 +1,83 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: pv-cleanup-unused-persistent-volumes
+  annotations:
+    policies.kyverno.io/title: "Cleanup Unused Persistent Volumes"
+    policies.kyverno.io/category: "Cleanup"
+    policies.kyverno.io/subject: "PersistentVolume"
+    policies.kyverno.io/description: >-
+      This policy automatically cleans up PersistentVolumes that are not bound to any
+      PersistentVolumeClaim or used by any Pod. It helps maintain cluster hygiene by
+      removing orphaned storage resources.
+spec:
+  validationFailureAction: enforce
+  background: true
+  rules:
+  - name: cleanup-unused-persistent-volumes
+    match:
+      any:
+      - resources:
+          kinds:
+          - PersistentVolume
+    context:
+    - name: pvcs
+      apiCall:
+        urlPath: "/api/v1/persistentvolumeclaims"
+        jmesPath: "items[?spec.volumeName == '{{ request.object.metadata.name }}'] | length(@)"
+    - name: pods_using_pv
+      apiCall:
+        urlPath: "/api/v1/pods"
+        jmesPath: "items[?spec.volumes[?persistentVolumeClaim.claimName != null] || spec.containers[?volumeMounts != null]] | length(@)"
+    preconditions:
+      all:
+      - key: "{{ request.object.status.phase || 'Available' }}"
+        operator: In
+        value: ["Available", "Released"]
+      - key: "{{ pvcs }}"
+        operator: Equals
+        value: 0
+      - key: "{{ request.object.spec.persistentVolumeReclaimPolicy || 'Retain' }}"
+        operator: NotEquals
+        value: "Retain"
+    validate:
+      message: "PersistentVolume {{ request.object.metadata.name }} is unused and will be cleaned up"
+      deny: {}
+  - name: delete-unused-persistent-volumes
+    match:
+      any:
+      - resources:
+          kinds:
+          - PersistentVolume
+    context:
+    - name: pvcs_bound
+      apiCall:
+        urlPath: "/api/v1/persistentvolumeclaims"
+        jmesPath: "items[?spec.volumeName == '{{ request.object.metadata.name }}'] | length(@)"
+    - name: pv_age_hours
+      variable:
+        value: "{{ time_since('', '{{ request.object.metadata.creationTimestamp }}', 'h') }}"
+    preconditions:
+      all:
+      - key: "{{ request.object.status.phase || 'Available' }}"
+        operator: In
+        value: ["Available", "Released"]
+      - key: "{{ pvcs_bound }}"
+        operator: Equals
+        value: 0
+      - key: "{{ pv_age_hours }}"
+        operator: GreaterThan
+        value: 24
+      - key: "{{ request.object.metadata.labels.\"kyverno.io/cleanup-policy\" || 'enabled' }}"
+        operator: Equals
+        value: "enabled"
+    mutate:
+      targets:
+      - apiVersion: v1
+        kind: PersistentVolume
+        name: "{{ request.object.metadata.name }}"
+      patchStrategicMerge:
+        metadata:
+          finalizers: []
+        status:
+          phase: "Terminating"
