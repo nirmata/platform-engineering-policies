@@ -1,0 +1,86 @@
+apiVersion: kyverno.io/v1alpha2
+kind: ClusterCleanupPolicy
+metadata:
+  name: cleanup-orphaned-ingresses
+  annotations:
+    policies.kyverno.io/title: "Cleanup Orphaned Ingresses"
+    policies.kyverno.io/category: "Cleanup"
+    policies.kyverno.io/description: "Remove Ingresses that point to non-existent Kubernetes services"
+    policies.kyverno.io/subject: "Ingress"
+    policies.kyverno.io/minversion: "1.11.0"
+spec:
+  # Schedule cleanup to run every hour
+  schedule: "0 * * * *"
+  
+  # Define conditions for cleanup
+  conditions:
+    any:
+    - key: "{{ request.object.metadata.labels.\"kyverno.io/cleanup-policy\" || 'enabled' }}"
+      operator: NotEquals
+      value: "disabled"
+  
+  # Match Ingress resources
+  match:
+    any:
+    - resources:
+        kinds:
+        - Ingress
+  
+  # Exclude system namespaces and critical ingresses
+  exclude:
+    any:
+    - resources:
+        namespaces:
+        - kube-system
+        - kube-public
+        - kyverno
+        - cert-manager
+        - ingress-nginx
+        - istio-system
+    - resources:
+        selector:
+          matchLabels:
+            kyverno.io/cleanup-policy: "disabled"
+  
+  # Define cleanup conditions
+  conditions:
+    any:
+    # Check if any service referenced in the Ingress rules doesn't exist
+    - key: |
+        {{- $services := list -}}
+        {{- range $rule := request.object.spec.rules -}}
+          {{- if $rule.http -}}
+            {{- range $path := $rule.http.paths -}}
+              {{- if $path.backend.service -}}
+                {{- $services = append $services $path.backend.service.name -}}
+              {{- end -}}
+            {{- end -}}
+          {{- end -}}
+        {{- end -}}
+        {{- $namespace := request.object.metadata.namespace || "default" -}}
+        {{- $orphaned := false -}}
+        {{- range $service := $services -}}
+          {{- $svcExists := (lookup "v1" "Service" $namespace $service) -}}
+          {{- if not $svcExists -}}
+            {{- $orphaned = true -}}
+          {{- end -}}
+        {{- end -}}
+        {{ $orphaned }}
+      operator: Equals
+      value: true
+  
+  # Cleanup settings
+  cleanup:
+    # Wait 5 minutes before cleanup to allow for service recreation
+    gracePeriodSeconds: 300
+    
+    # Generate events for cleanup actions
+    generateEvents: true
+    
+    # Exclude recently created ingresses (less than 10 minutes old)
+    excludeResources:
+      conditions:
+        any:
+        - key: "{{ time_since(request.object.metadata.creationTimestamp, '', 'RFC3339') }}"
+          operator: LessThan
+          value: "10m"

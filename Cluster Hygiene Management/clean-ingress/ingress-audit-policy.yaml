@@ -1,0 +1,177 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: audit-orphaned-ingresses
+  annotations:
+    policies.kyverno.io/title: "Audit Orphaned Ingresses"
+    policies.kyverno.io/category: "Monitoring"
+    policies.kyverno.io/description: "Generate reports for Ingresses pointing to non-existent services"
+    policies.kyverno.io/subject: "Ingress"
+    policies.kyverno.io/minversion: "1.11.0"
+spec:
+  validationFailureAction: Audit
+  background: true
+  
+  rules:
+  - name: check-ingress-service-references
+    match:
+      any:
+      - resources:
+          kinds:
+          - Ingress
+    
+    exclude:
+      any:
+      - resources:
+          namespaces:
+          - kube-system
+          - kube-public
+          - kyverno
+          - cert-manager
+          - ingress-nginx
+          - istio-system
+    
+    validate:
+      message: |
+        Ingress '{{ request.object.metadata.name }}' in namespace '{{ request.object.metadata.namespace || "default" }}' 
+        references non-existent service(s). Services referenced: 
+        {{- $services := list -}}
+        {{- $missingServices := list -}}
+        {{- range $rule := request.object.spec.rules -}}
+          {{- if $rule.http -}}
+            {{- range $path := $rule.http.paths -}}
+              {{- if $path.backend.service -}}
+                {{- $services = append $services $path.backend.service.name -}}
+                {{- $namespace := request.object.metadata.namespace || "default" -}}
+                {{- $svcExists := (lookup "v1" "Service" $namespace $path.backend.service.name) -}}
+                {{- if not $svcExists -}}
+                  {{- $missingServices = append $missingServices $path.backend.service.name -}}
+                {{- end -}}
+              {{- end -}}
+            {{- end -}}
+          {{- end -}}
+        {{- end -}}
+        {{ $services | join ", " }}. Missing services: {{ $missingServices | join ", " }}.
+      
+      deny:
+        conditions:
+          any:
+          - key: |
+              {{- $services := list -}}
+              {{- range $rule := request.object.spec.rules -}}
+                {{- if $rule.http -}}
+                  {{- range $path := $rule.http.paths -}}
+                    {{- if $path.backend.service -}}
+                      {{- $services = append $services $path.backend.service.name -}}
+                    {{- end -}}
+                  {{- end -}}
+                {{- end -}}
+              {{- end -}}
+              {{- $namespace := request.object.metadata.namespace || "default" -}}
+              {{- $hasOrphanedServices := false -}}
+              {{- range $service := $services -}}
+                {{- $svcExists := (lookup "v1" "Service" $namespace $service) -}}
+                {{- if not $svcExists -}}
+                  {{- $hasOrphanedServices = true -}}
+                {{- end -}}
+              {{- end -}}
+              {{ $hasOrphanedServices }}
+            operator: Equals
+            value: true
+
+---
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: generate-ingress-audit-report
+  annotations:
+    policies.kyverno.io/title: "Generate Ingress Audit Reports"
+    policies.kyverno.io/category: "Monitoring"
+    policies.kyverno.io/description: "Generate ConfigMaps with audit reports for orphaned Ingresses"
+    policies.kyverno.io/subject: "Ingress"
+    policies.kyverno.io/minversion: "1.11.0"
+spec:
+  generateExisting: true
+  background: true
+  
+  rules:
+  - name: generate-audit-report
+    match:
+      any:
+      - resources:
+          kinds:
+          - Ingress
+    
+    exclude:
+      any:
+      - resources:
+          namespaces:
+          - kube-system
+          - kube-public
+          - kyverno
+          - cert-manager
+          - ingress-nginx
+          - istio-system
+    
+    generate:
+      apiVersion: v1
+      kind: ConfigMap
+      name: "ingress-audit-{{ request.object.metadata.name }}"
+      namespace: "{{ request.object.metadata.namespace || 'default' }}"
+      synchronize: true
+      
+      data:
+        metadata:
+          labels:
+            kyverno.io/generated-by: "generate-ingress-audit-report"
+            kyverno.io/source-resource: "{{ request.object.metadata.name }}"
+            audit.kyverno.io/resource-type: "ingress"
+        
+        data:
+          ingress-name: "{{ request.object.metadata.name }}"
+          ingress-namespace: "{{ request.object.metadata.namespace || 'default' }}"
+          audit-timestamp: "{{ time_now_utc() }}"
+          referenced-services: |
+            {{- $services := list -}}
+            {{- range $rule := request.object.spec.rules -}}
+              {{- if $rule.http -}}
+                {{- range $path := $rule.http.paths -}}
+                  {{- if $path.backend.service -}}
+                    {{- $services = append $services $path.backend.service.name -}}
+                  {{- end -}}
+                {{- end -}}
+              {{- end -}}
+            {{- end -}}
+            {{ $services | join "," }}
+          
+          service-status: |
+            {{- $namespace := request.object.metadata.namespace || "default" -}}
+            {{- $serviceStatus := dict -}}
+            {{- range $rule := request.object.spec.rules -}}
+              {{- if $rule.http -}}
+                {{- range $path := $rule.http.paths -}}
+                  {{- if $path.backend.service -}}
+                    {{- $svcExists := (lookup "v1" "Service" $namespace $path.backend.service.name) -}}
+                    {{- $_ := set $serviceStatus $path.backend.service.name (ternary "exists" "missing" $svcExists) -}}
+                  {{- end -}}
+                {{- end -}}
+              {{- end -}}
+            {{- end -}}
+            {{ $serviceStatus | toJson }}
+          
+          cleanup-eligible: |
+            {{- $namespace := request.object.metadata.namespace || "default" -}}
+            {{- $hasOrphanedServices := false -}}
+            {{- range $rule := request.object.spec.rules -}}
+              {{- if $rule.http -}}
+                {{- range $path := $rule.http.paths -}}
+                  {{- if $path.backend.service -}}
+                    {{- $svcExists := (lookup "v1" "Service" $namespace $path.backend.service.name) -}}
+                    {{- if not $svcExists -}}
+                      {{- $hasOrphanedServices = true -}}
+                    {{- end -}}
+                  {{- end -}}
+                {{- end -}}
+              {{- end -}}
+            {{- end -}}
+            {{ $hasOrphanedServices }}

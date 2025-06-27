@@ -1,0 +1,190 @@
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: ingress-cleanup-policy-test
+  annotations:
+    description: "Test Kyverno Ingress cleanup policy functionality"
+spec:
+  timeouts:
+    apply: 30s
+    assert: 120s
+    cleanup: 30s
+    delete: 30s
+    error: 30s
+    exec: 30s
+  
+  steps:
+  # Step 1: Setup test namespace and initial resources
+  - name: setup-test-environment
+    try:
+    - apply:
+        file: test-namespace.yaml
+    - apply:
+        file: test-service.yaml
+    - apply:
+        file: test-ingress-valid.yaml
+    - sleep:
+        duration: 10s
+
+  # Step 2: Verify initial state - valid ingress should exist
+  - name: verify-initial-state
+    try:
+    - assert:
+        file: assert-ingress-exists.yaml
+
+  # Step 3: Delete the service to make ingress orphaned
+  - name: delete-service
+    try:
+    - delete:
+        ref:
+          apiVersion: v1
+          kind: Service
+          name: test-app-service
+          namespace: ingress-cleanup-test
+    - sleep:
+        duration: 15s
+
+  # Step 4: Create orphaned ingress (pointing to non-existent service)
+  - name: create-orphaned-ingress
+    try:
+    - apply:
+        file: test-ingress-orphaned.yaml
+    - sleep:
+        duration: 10s
+
+  # Step 5: Verify audit policy generates events/reports
+  - name: verify-audit-policy
+    try:
+    - assert:
+        file: assert-audit-configmap.yaml
+    - sleep:
+        duration: 30s
+
+  # Step 6: Trigger cleanup policy (simulate scheduled run)
+  - name: trigger-cleanup
+    try:
+    - script:
+        content: |
+          # Force cleanup policy evaluation
+          kubectl patch ingress orphaned-test-ingress -n ingress-cleanup-test \
+            --type merge -p '{"metadata":{"annotations":{"kyverno.io/force-cleanup":"true"}}}'
+    - sleep:
+        duration: 60s
+
+  # Step 7: Verify orphaned ingress is cleaned up
+  - name: verify-cleanup
+    try:
+    - error:
+        file: assert-orphaned-ingress-deleted.yaml
+
+  # Step 8: Verify valid ingress (with existing service) remains
+  - name: verify-valid-ingress-remains
+    try:
+    - apply:
+        file: test-service.yaml  # Recreate service
+    - assert:
+        file: assert-valid-ingress-exists.yaml
+
+---
+# test-namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ingress-cleanup-test
+  labels:
+    test: kyverno-ingress-cleanup
+
+---
+# test-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: test-app-service
+  namespace: ingress-cleanup-test
+  labels:
+    app: test-app
+spec:
+  selector:
+    app: test-app
+  ports:
+  - port: 80
+    targetPort: 8080
+  type: ClusterIP
+
+---
+# test-ingress-valid.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: valid-test-ingress
+  namespace: ingress-cleanup-test
+  labels:
+    test: kyverno-cleanup
+spec:
+  rules:
+  - host: valid.test.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: test-app-service
+            port:
+              number: 80
+
+---
+# test-ingress-orphaned.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: orphaned-test-ingress
+  namespace: ingress-cleanup-test
+  labels:
+    test: kyverno-cleanup
+spec:
+  rules:
+  - host: orphaned.test.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: non-existent-service
+            port:
+              number: 80
+
+---
+# assert-ingress-exists.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: valid-test-ingress
+  namespace: ingress-cleanup-test
+
+---
+# assert-audit-configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ingress-audit-orphaned-test-ingress
+  namespace: ingress-cleanup-test
+  labels:
+    kyverno.io/generated-by: "generate-ingress-audit-report"
+
+---
+# assert-orphaned-ingress-deleted.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: orphaned-test-ingress
+  namespace: ingress-cleanup-test
+
+---
+# assert-valid-ingress-exists.yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: valid-test-ingress
+  namespace: ingress-cleanup-test
